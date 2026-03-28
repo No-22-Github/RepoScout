@@ -1461,7 +1461,7 @@ reposcout mcp
 - 更新了 `cmd/reposcout/main.go` 使用新的渲染器
 - Markdown 输出结构清晰：任务摘要 → 主链路文件 → 配套文件 → 不确定点 → 阅读顺序 → 风险提示 → 统计信息
 
-### RS-018 [TODO] 实现 `reposcout run --format markdown`
+### RS-018 [DONE] 实现 `reposcout run --format markdown`
 
 目标：
 
@@ -1482,8 +1482,19 @@ reposcout mcp
 
 完成标准：
 
-- 命令可以独立输出 Markdown
-- 内容与 JSON 输出保持一致
+- 命令可以独立输出 Markdown ✓
+- 内容与 JSON 输出保持一致 ✓
+
+实现：
+
+- `cmd/reposcout/main.go` (已包含 formatMarkdown 函数)
+- `internal/output/markdown_renderer.go`
+
+备注：
+
+- RS-016 实现时已经包含了对 `--format markdown` 的支持
+- `formatMarkdown` 函数使用 `output.NewMarkdownRenderer()` 渲染 ContextPack
+- JSON 和 Markdown 输出的内容结构完全一致（task、main_chain、companion_files、uncertain_nodes、reading_order、stats）
 
 ### RS-019 [TODO] 建立 goldens 数据集格式
 
