@@ -111,17 +111,17 @@
 
 ### 当前功能点
 
-- `RS-001` [DONE]
+- `RS-002` [DONE]
 
 ### 本轮 Todo
 
 - `[x]` 阅读当前功能点要求和依赖
-- `[x]` 实现最小代码改动
-- `[ ]` 补充或更新对应测试（RS-001 是骨架初始化，无需单元测试）
+- `[x]` 实现 internal/config/config.go
+- `[x]` 创建 examples/runtime_config.sample.json
+- `[x]` 补充对应单元测试
 - `[x]` 运行格式化
-- `[x]` 运行与改动相关的测试（验证 CLI 命令可用）
+- `[x]` 运行与改动相关的测试
 - `[x]` 评估是否波及已有逻辑，并执行必要回归测试（无已有逻辑）
-- `[x]` 修复代码或修正测试，使结果符合预期需求
 - `[x]` 更新 `docs/RepoScout_MVP.md`
 - `[x]` 更新 `docs/WORK.md`
 
@@ -266,20 +266,20 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：项目骨架已初始化
-- 当前进度：`RS-001` 已完成
+- 代码状态：统一配置结构已实现
+- 当前进度：`RS-002` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-002` 实现统一运行配置结构
-
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L915)。
-
-如果 `RS-002` 完成，则下一步通常是：
-
 - `RS-003` 定义 ReconRequest Schema
+
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L950)。
+
+如果 `RS-003` 完成，则下一步通常是：
+
+- `RS-004` 定义 FileCard Schema
 
 ---
 
