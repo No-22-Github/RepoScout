@@ -1010,7 +1010,7 @@ reposcout mcp
   - `heuristic_tags`
   - `scores`
 
-### RS-005 [TODO] 定义 ContextPack Schema
+### RS-005 [DONE] 定义 ContextPack Schema
 
 目标：
 

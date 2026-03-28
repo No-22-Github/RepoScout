@@ -111,12 +111,12 @@
 
 ### 当前功能点
 
-- `RS-004` [DONE]
+- `RS-005` [DONE]
 
 ### 本轮 Todo
 
 - `[x]` 阅读当前功能点要求和依赖
-- `[x]` 实现 internal/schema/file_card.go
+- `[x]` 实现 internal/schema/context_pack.go
 - `[x]` 补充对应单元测试
 - `[x]` 运行格式化
 - `[x]` 运行与改动相关的测试
@@ -265,20 +265,20 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：ReconRequest、FileCard Schema 已定义
-- 当前进度：`RS-004` 已完成
+- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义
+- 当前进度：`RS-005` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-005` 定义 ContextPack Schema
-
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1013)。
-
-如果 `RS-005` 完成，则下一步通常是：
-
 - `RS-006` 实现 Repo 文件扫描
+
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1044)。
+
+如果 `RS-006` 完成，则下一步通常是：
+
+- `RS-007` 实现语言识别
 
 ---
 
