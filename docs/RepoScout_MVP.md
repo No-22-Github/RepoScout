@@ -1065,7 +1065,7 @@ reposcout mcp
 - 支持忽略常见无关目录，例如 `.git`、`node_modules`、`out`、`dist`
 - 返回稳定的相对路径列表
 
-### RS-007 [TODO] 实现语言识别
+### RS-007 [DONE] 实现语言识别
 
 目标：
 
