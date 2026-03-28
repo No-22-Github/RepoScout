@@ -111,16 +111,15 @@
 
 ### 当前功能点
 
-- `RS-021` [DONE] 定义 LLM TaskCard
+- `RS-022` [DONE] 实现 Provider Adapter 抽象层
 
 ### 本轮 Todo
 
-- `[x]` 阅读 RS-021 功能点要求和依赖
-- `[x]` 设计 TaskCard 数据结构和接口
-- `[x]` 实现 TaskCard 创建和序列化方法
-- `[x]` 实现 ToPrompt 方法生成 LLM 输入
-- `[x]` 实现 TaskResult 解析 LLM 响应
-- `[x]` 编写 TaskCard 单元测试
+- `[x]` 阅读 RS-022 功能点要求和依赖
+- `[x]` 设计 ProviderAdapter 接口
+- `[x]` 实现 OpenAI 兼容 Adapter
+- `[x]` 实现 Mock Adapter 用于测试
+- `[x]` 编写 Adapter 单元测试
 - `[x]` 运行格式化 (gofmt)
 - `[x]` 运行相关测试
 - `[x]` 更新 docs/RepoScout_MVP.md
@@ -267,16 +266,16 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器、CLI run 子命令、Markdown 渲染器、CLI markdown 输出、Goldens 数据集格式、基础评测器、LLM TaskCard 已实现
-- 当前进度：`RS-021` 已完成
+- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器、CLI run 子命令、Markdown 渲染器、CLI markdown 输出、Goldens 数据集格式、基础评测器、LLM TaskCard、Provider Adapter 抽象层已实现
+- 当前进度：`RS-022` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-022` 实现 Provider Adapter 抽象层
+- `RS-023` 实现 LLM Worker Pool
 
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1568)。
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1653)。
 
 ---
 

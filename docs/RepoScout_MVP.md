@@ -1624,7 +1624,7 @@ reposcout mcp
   - `ParseTaskResult()`: 解析 LLM 响应
 - `internal/llm/task_card_test.go`: 完整单元测试覆盖
 
-### RS-022 [TODO] 实现 Provider Adapter 抽象层
+### RS-022 [DONE] 实现 Provider Adapter 抽象层
 
 目标：
 
@@ -1645,10 +1645,31 @@ reposcout mcp
 
 完成标准：
 
-- 至少定义一个 adapter 接口
-- 即使暂时没有真实模型，也能接入 mock adapter
-- 适配层请求格式按 OpenAI 兼容 `v1/chat/completions` 设计
-- 不把具体 provider 的私有字段泄漏到上层业务逻辑
+- 至少定义一个 adapter 接口 ✓
+- 即使暂时没有真实模型，也能接入 mock adapter ✓
+- 适配层请求格式按 OpenAI 兼容 `v1/chat/completions` 设计 ✓
+- 不把具体 provider 的私有字段泄漏到上层业务逻辑 ✓
+
+实现：
+
+- `internal/llm/adapter.go`: Provider Adapter 抽象层实现
+  - `ProviderAdapter`: 接口定义，包含 Execute、ExecuteBatch、IsAvailable、Close 方法
+  - `AdapterConfig`: 适配器配置结构，支持从 config.Config 转换
+  - `OpenAICompatibleAdapter`: OpenAI 兼容 API 适配器实现
+    - 支持 `v1/chat/completions` 端点
+    - 支持自定义 HTTP Client
+    - 支持 context 取消和超时
+    - 支持批量执行
+  - `MockAdapter`: 测试用 Mock 适配器
+    - 支持预定义响应
+    - 支持自定义执行函数
+    - 支持调用计数和跟踪
+- `internal/llm/adapter_test.go`: 完整单元测试覆盖
+  - 测试配置转换
+  - 测试 OpenAI 适配器执行和错误处理
+  - 测试 Mock 适配器功能
+  - 测试接口实现合规性
+  - 测试 context 取消
 
 ### RS-023 [TODO] 实现 LLM Worker Pool
 
