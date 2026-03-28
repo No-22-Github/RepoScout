@@ -1379,7 +1379,7 @@ reposcout mcp
   - configuration: 检测到配置文件时提示
 - 提供 `BuildFromRankResult` 和 `BuildFromCards` 便捷函数
 
-### RS-016 [TODO] 实现 `reposcout run --format json`
+### RS-016 [DONE] 实现 `reposcout run --format json`
 
 目标：
 
@@ -1401,9 +1401,25 @@ reposcout mcp
 
 完成标准：
 
-- 命令可直接运行
-- 错误输出可读
-- 成功输出合法 JSON
+- 命令可直接运行 ✓
+- 错误输出可读 ✓
+- 成功输出合法 JSON ✓
+
+实现：
+
+- `internal/runner/runner.go`
+- `internal/runner/runner_test.go`
+- `cmd/reposcout/main.go` (updated)
+
+备注：
+
+- 实现了 `Runner` 结构体，编排完整的侦察流水线
+- 流水线阶段：repo 扫描 → 候选集扩展 → FileCard 构建 → 排序 → ContextPack 组装
+- 支持通过 `-f/--format` 选择 `json` 或 `markdown` 输出格式
+- 支持通过 `-o/--output` 指定输出文件路径（默认 stdout）
+- 支持 `-c/--config` 加载运行时配置
+- 当请求缺少必要字段或 repo_root 不存在时，返回清晰的错误信息
+- 同时实现了基础的 Markdown 渲染（后续 RS-017 可增强）
 
 ### RS-017 [TODO] 实现 Markdown 渲染
 

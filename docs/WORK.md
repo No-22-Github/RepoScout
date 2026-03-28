@@ -111,16 +111,17 @@
 
 ### 当前功能点
 
-- `RS-015` [DONE]
+- `RS-016` [DONE]
 
 ### 本轮 Todo
 
-- `[x]` 阅读当前功能点要求和依赖
-- `[x]` 实现 internal/pack/builder.go ContextPack 构建器
+- `[x]` 阅读 RS-016 功能点要求和依赖
+- `[x]` 实现 internal/runner/runner.go 编排完整流水线
+- `[x]` 更新 cmd/reposcout/main.go 接入 run 子命令
 - `[x]` 补充对应单元测试
 - `[x]` 运行格式化
 - `[x]` 运行与改动相关的测试
-- `[x]` 评估是否波及已有逻辑，并执行必要回归测试（无影响，仅新增 pack 包）
+- `[x]` 评估是否波及已有逻辑，并执行必要回归测试（无影响，仅新增 runner 包和更新 CLI）
 - `[x]` 更新 `docs/RepoScout_MVP.md`
 - `[x]` 更新 `docs/WORK.md`
 
@@ -265,16 +266,16 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器已实现
-- 当前进度：`RS-015` 已完成
+- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器、CLI run 子命令已实现
+- 当前进度：`RS-016` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-016` 实现 `reposcout run --format json`
+- `RS-017` 实现 Markdown 渲染
 
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1364)。
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1408)。
 
 ---
 
