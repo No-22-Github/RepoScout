@@ -1211,7 +1211,7 @@ reposcout mcp
 - 每种规则都要求文件在 settings 上下文中才匹配
 - 通过 `MatchesProfile()` 函数判断是否应该应用此规则引擎
 
-### RS-012 [TODO] 实现轻量符号抽取
+### RS-012 [DONE] 实现轻量符号抽取
 
 目标：
 
@@ -1232,9 +1232,22 @@ reposcout mcp
 
 完成标准：
 
-- 不追求完整 AST
-- 至少能提取函数名、类名、常量名中的一部分
-- 失败时允许返回空列表，但不能中断流程
+- 不追求完整 AST ✓
+- 至少能提取函数名、类名、常量名中的一部分 ✓
+- 失败时允许返回空列表，但不能中断流程 ✓
+
+实现：
+
+- `internal/scanner/symbol_extractor.go`
+- `internal/scanner/symbol_extractor_test.go`
+
+备注：
+
+- 实现了 `SymbolExtractor` 结构体，使用正则表达式进行轻量符号抽取
+- 支持语言：Go、JavaScript/TypeScript、C/C++、Python、Java、Rust
+- 每种语言抽取：函数、类/结构体、接口/trait、常量等
+- 可配置 `MaxFileSize`（默认 500KB）和 `MaxSymbols`（默认 100）
+- 提供 `ExtractFromFile()`、`Extract()`、`ExtractFromContent()` 等接口
 
 ### RS-013 [TODO] 生成 FileCard
 
