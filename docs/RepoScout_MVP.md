@@ -979,7 +979,7 @@ reposcout mcp
   - `focus_checks`
   - `budget`
 
-### RS-004 [TODO] 定义 FileCard Schema
+### RS-004 [DONE] 定义 FileCard Schema
 
 目标：
 
