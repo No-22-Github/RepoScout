@@ -1292,7 +1292,7 @@ reposcout mcp
 - seed 文件自动获得 `SeedWeight = 1.0` 和 `discovered_by = "seed"`
 - heuristic_score 合并了基础规则分和 profile 规则分（profile 权重 0.5）
 
-### RS-014 [TODO] 构建候选集排序器
+### RS-014 [DONE] 构建候选集排序器
 
 目标：
 
@@ -1312,12 +1312,26 @@ reposcout mcp
 
 完成标准：
 
-- 排序逻辑稳定可解释
+- 排序逻辑稳定可解释 ✓
 - 至少合并：
-  - seed 权重
-  - 同模块权重
-  - 关键词规则权重
-  - profile 规则权重
+  - seed 权重 ✓
+  - 同模块权重 ✓
+  - 关键词规则权重 ✓
+  - profile 规则权重 ✓
+
+实现：
+
+- `internal/ranking/ranker.go`
+- `internal/ranking/ranker_test.go`
+
+备注：
+
+- 实现了 `Ranker` 结构体，支持配置化权重
+- 通过 `RankerConfig` 可调整各项权重：SeedWeight、SameModuleWeight、HeuristicWeight、ProfileWeight
+- `Rank()` 方法计算最终分数并排序，返回 `RankResult`
+- `RankResult` 包含排序后的卡片、TopN 获取、阈值过滤等功能
+- 支持 `FileScoreBreakdown` 详细分数分解，便于解释排序结果
+- 模块权重计算支持同模块、子模块、父模块、共享前缀等多种关系
 
 ### RS-015 [TODO] 组装无模型版 ContextPack
 
