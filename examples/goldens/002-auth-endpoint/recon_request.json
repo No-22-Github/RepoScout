@@ -1,0 +1,22 @@
+{
+  "task": "Add a new REST API endpoint for user authentication with JWT token generation",
+  "repo_root": "/path/to/golang/project",
+  "profile": "feature-add",
+  "seed_files": [
+    "internal/handler/user_handler.go",
+    "internal/handler/user_handler_test.go"
+  ],
+  "focus_symbols": [
+    "LoginHandler",
+    "AuthMiddleware",
+    "TokenService"
+  ],
+  "focus_checks": [
+    "security",
+    "error-handling"
+  ],
+  "budget": {
+    "max_files": 100,
+    "max_time_sec": 120
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "002",
+  "name": "auth-endpoint",
+  "description": "Add a new REST API endpoint for user authentication",
+  "repo_family": "go-web",
+  "profile": "feature-add",
+  "created_at": "2026-03-29",
+  "difficulty": "medium",
+  "notes": "Typical Go web service task. Tests handler discovery, middleware identification, and route registration patterns."
+}

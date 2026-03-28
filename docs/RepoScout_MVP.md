@@ -1496,7 +1496,7 @@ reposcout mcp
 - `formatMarkdown` 函数使用 `output.NewMarkdownRenderer()` 渲染 ContextPack
 - JSON 和 Markdown 输出的内容结构完全一致（task、main_chain、companion_files、uncertain_nodes、reading_order、stats）
 
-### RS-019 [TODO] 建立 goldens 数据集格式
+### RS-019 [DONE] 建立 goldens 数据集格式
 
 目标：
 
@@ -1518,10 +1518,26 @@ reposcout mcp
 完成标准：
 
 - 每个样本至少包含：
-  - `task`
-  - `recon_request.json`
-  - `expected_files.json`
-- 文档中明确如何新增样本
+  - `task` ✓
+  - `recon_request.json` ✓
+  - `expected_files.json` ✓
+- 文档中明确如何新增样本 ✓
+
+实现：
+
+- `examples/goldens/README.md`
+- `examples/goldens/001-browser-settings-toggle/`
+- `examples/goldens/002-auth-endpoint/`
+
+备注：
+
+- 创建了完整的 goldens 数据集格式说明文档
+- 每个样本目录包含三个文件：
+  - `meta.json`: 元数据（id、name、description、repo_family、profile、difficulty）
+  - `recon_request.json`: 标准 ReconRequest 输入
+  - `expected_files.json`: 期望结果（main_chain、companion_files、optional_files、excluded_files）
+- README.md 详细说明了如何新增样本、目录命名规范、文件格式要求
+- 提供了两个示例样本：浏览器设置任务和认证端点任务
 
 ### RS-020 [TODO] 实现基础评测器
 

@@ -1,0 +1,10 @@
+{
+  "id": "001",
+  "name": "browser-settings-toggle",
+  "description": "Add a toggle switch to browser settings page for a new preference",
+  "repo_family": "browser-settings",
+  "profile": "browser_settings",
+  "created_at": "2026-03-29",
+  "difficulty": "medium",
+  "notes": "Typical feature-add task in browser settings context. Tests seed expansion and profile rule matching."
+}

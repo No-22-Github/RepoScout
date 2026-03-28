@@ -1,0 +1,23 @@
+{
+  "main_chain": [
+    "internal/handler/user_handler.go",
+    "internal/handler/user_handler_test.go",
+    "internal/service/auth_service.go",
+    "internal/middleware/auth_middleware.go"
+  ],
+  "companion_files": [
+    "internal/model/user.go",
+    "internal/repository/user_repository.go",
+    "internal/config/config.go",
+    "pkg/jwt/token.go"
+  ],
+  "optional_files": [
+    "internal/service/auth_service_test.go",
+    "pkg/jwt/token_test.go"
+  ],
+  "excluded_files": [
+    "internal/handler/product_handler.go",
+    "internal/repository/product_repository.go"
+  ],
+  "notes": "main_chain contains handler, auth service, and middleware. companion_files include user model, repository, and JWT utilities. Product-related files should not be included."
+}

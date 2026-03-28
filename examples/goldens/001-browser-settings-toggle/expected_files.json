@@ -1,0 +1,23 @@
+{
+  "main_chain": [
+    "chrome/browser/ui/settings/autofill_settings_page.cc",
+    "chrome/browser/ui/settings/autofill_settings_page.h",
+    "chrome/browser/preferences/autofill_prefs.cc",
+    "chrome/browser/preferences/autofill_prefs.h"
+  ],
+  "companion_files": [
+    "chrome/browser/ui/settings/settings_toggle.cc",
+    "chrome/browser/ui/settings/settings_toggle.h",
+    "chrome/browser/preferences/pref_service.cc",
+    "chrome/browser/autofill/autofill_manager.cc"
+  ],
+  "optional_files": [
+    "chrome/browser/ui/settings/autofill_settings_test.cc",
+    "chrome/browser/autofill/autofill_test_utils.cc"
+  ],
+  "excluded_files": [
+    "components/crash/core/common/crash_key.cc",
+    "third_party/blink/renderer/core/dom/document.cc"
+  ],
+  "notes": "main_chain contains the settings page and preference definition files. companion_files include the toggle UI component and pref service. Tests should be found but are optional."
+}
