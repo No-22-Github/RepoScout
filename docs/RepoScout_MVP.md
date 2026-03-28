@@ -1671,7 +1671,7 @@ reposcout mcp
   - 测试接口实现合规性
   - 测试 context 取消
 
-### RS-023 [TODO] 实现 LLM Worker Pool
+### RS-023 [DONE] 实现 LLM Worker Pool
 
 目标：
 
@@ -1692,9 +1692,35 @@ reposcout mcp
 
 完成标准：
 
-- 能并发调度
-- 单任务失败不影响整体流程
-- 输出顺序与输入可关联
+- 能并发调度 ✓
+- 单任务失败不影响整体流程 ✓
+- 输出顺序与输入可关联 ✓
+
+实现：
+
+- `internal/llm/worker_pool.go`: Worker Pool 实现
+  - `WorkerPool`: 并发执行管理器
+  - `WorkerPoolConfig`: 配置结构，支持 Adapter、MaxConcurrency、StopOnFirstError
+  - `PoolResult`: 批量执行结果，包含 Results、Errors、计数统计
+  - `Execute()`: 并发执行一批 TaskCard，结果顺序与输入对应
+  - `ExecuteWithCallback()`: 支持回调的并发执行，用于进度报告
+  - `ExecuteSequential()`: 顺序执行，用于调试场景
+- `internal/llm/worker_pool_test.go`: 完整单元测试覆盖
+  - 测试空输入、单任务、多任务场景
+  - 测试结果顺序保持
+  - 测试错误隔离（单任务失败不影响其他任务）
+  - 测试 StopOnFirstError 模式
+  - 测试 Context 取消
+  - 测试无 Adapter 降级
+  - 测试回调功能
+  - Benchmark 测试
+
+备注：
+
+- 使用信号量机制控制并发数
+- 支持 StopOnFirstError 模式，在首次错误时停止执行
+- 通过 atomic 计数器跟踪成功/失败数
+- PoolResult 提供 GetSuccessfulResults() 和 GetFailedIndices() 便捷方法
 
 ### RS-024 [TODO] 实现 LLM 结果融合
 
