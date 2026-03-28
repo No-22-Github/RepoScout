@@ -882,7 +882,7 @@ reposcout mcp
 - `[DONE]` 已完成
 - `[BLOCKED]` 被依赖阻塞
 
-### RS-001 [TODO] 初始化项目骨架
+### RS-001 [DONE] 初始化项目骨架
 
 目标：
 
