@@ -1249,7 +1249,7 @@ reposcout mcp
 - 可配置 `MaxFileSize`（默认 500KB）和 `MaxSymbols`（默认 100）
 - 提供 `ExtractFromFile()`、`Extract()`、`ExtractFromContent()` 等接口
 
-### RS-013 [TODO] 生成 FileCard
+### RS-013 [DONE] 生成 FileCard
 
 目标：
 
@@ -1275,9 +1275,22 @@ reposcout mcp
 
 完成标准：
 
-- 每个候选文件都能生成一张 `FileCard`
-- seed 文件必须带上 `seed` 来源标记
-- 需要给出初始 `heuristic_score`
+- 每个候选文件都能生成一张 `FileCard` ✓
+- seed 文件必须带上 `seed` 来源标记 ✓
+- 需要给出初始 `heuristic_score` ✓
+
+实现：
+
+- `internal/heuristics/file_card_builder.go`
+- `internal/heuristics/file_card_builder_test.go`
+
+备注：
+
+- 实现了 `FileCardBuilder` 结构体，整合模块检测、语言识别、基础规则、profile规则和符号抽取
+- 支持 `Build()` 单个文件和 `BuildAll()` 批量构建
+- 通过 `BuildOptions` 支持 repo root、profile、focus_checks、seed_files 和 discovery_sources 配置
+- seed 文件自动获得 `SeedWeight = 1.0` 和 `discovered_by = "seed"`
+- heuristic_score 合并了基础规则分和 profile 规则分（profile 权重 0.5）
 
 ### RS-014 [TODO] 构建候选集排序器
 
