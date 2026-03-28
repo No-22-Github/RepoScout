@@ -947,7 +947,7 @@ reposcout mcp
   - `runtime.enable_model_rerank`
 - 配置结构可被 CLI 和后续 MCP 共同复用
 
-### RS-003 [TODO] 定义 ReconRequest Schema
+### RS-003 [DONE] 定义 ReconRequest Schema
 
 目标：
 

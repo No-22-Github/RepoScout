@@ -1,0 +1,22 @@
+{
+  "task": "Add a new REST API endpoint for user authentication",
+  "repo_root": "/path/to/repository",
+  "profile": "feature-add",
+  "seed_files": [
+    "cmd/server/main.go",
+    "internal/auth/handler.go"
+  ],
+  "focus_symbols": [
+    "LoginHandler",
+    "AuthMiddleware"
+  ],
+  "focus_checks": [
+    "security",
+    "error-handling"
+  ],
+  "budget": {
+    "max_files": 100,
+    "max_tokens": 50000,
+    "max_time_sec": 120
+  }
+}
