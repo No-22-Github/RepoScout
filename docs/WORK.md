@@ -111,16 +111,19 @@
 
 ### 当前功能点
 
-- `RS-019` [DONE] 建立 goldens 数据集格式
+- `RS-020` [DONE] 实现基础评测器
 
 ### 本轮 Todo
 
-- `[x]` 阅读 RS-019 功能点要求和依赖
-- `[x]` 设计 goldens 数据集目录结构
-- `[x]` 创建 examples/goldens/ 目录和格式约定
-- `[x]` 创建样本示例文件
-- `[x]` 更新文档说明如何新增样本
+- `[x]` 阅读 RS-020 功能点要求和依赖
+- `[x]` 设计评测器数据结构和接口
+- `[x]` 实现 goldens 数据集加载器
+- `[x]` 实现召回指标计算逻辑
+- `[x]` 实现样本级明细输出
+- `[x]` 实现 CLI eval 子命令集成
+- `[x]` 编写评测器单元测试
 - `[x]` 运行格式化 (gofmt)
+- `[x]` 运行相关测试
 - `[x]` 更新 docs/RepoScout_MVP.md
 - `[x]` 更新 docs/WORK.md
 
@@ -265,16 +268,16 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器、CLI run 子命令、Markdown 渲染器、CLI markdown 输出、Goldens 数据集格式已实现
-- 当前进度：`RS-019` 已完成
+- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner、语言识别、模块路径归一化、seed 邻域扩展、基础关键词规则、Browser Settings Profile 规则、轻量符号抽取、FileCard 构建器、候选集排序器、无模型版 ContextPack 构建器、CLI run 子命令、Markdown 渲染器、CLI markdown 输出、Goldens 数据集格式、基础评测器已实现
+- 当前进度：`RS-020` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-020` 实现基础评测器
+- `RS-021` 定义 LLM TaskCard
 
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1526)。
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1568)。
 
 ---
 

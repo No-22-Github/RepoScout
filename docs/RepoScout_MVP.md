@@ -1539,7 +1539,7 @@ reposcout mcp
 - README.md 详细说明了如何新增样本、目录命名规范、文件格式要求
 - 提供了两个示例样本：浏览器设置任务和认证端点任务
 
-### RS-020 [TODO] 实现基础评测器
+### RS-020 [DONE] 实现基础评测器
 
 目标：
 
@@ -1564,6 +1564,23 @@ reposcout mcp
   - `Recall@10`
   - `Recall@20`
   - 样本级命中/漏失文件
+
+实现：
+
+- `internal/eval/eval.go`: 评测器核心实现
+  - `GoldenSample`: 金样本数据结构
+  - `Evaluator`: 评测器，支持加载 goldens 数据集并计算召回指标
+  - `SampleResult`: 样本级评测结果，包含命中/漏失/额外文件
+  - `EvalResult`: 汇总评测结果
+- `internal/eval/eval_test.go`: 单元测试
+- `cmd/reposcout/main.go`: 集成 `reposcout eval` 子命令
+  - 支持 `--format text|json` 输出格式
+
+备注：
+
+- 支持 Recall@10、Recall@20、Precision@10、Precision@20 等指标
+- 支持样本级明细输出（命中、漏失、额外文件）
+- CLI 命令：`reposcout eval <goldens_dir> [--format json|text]`
 
 ### RS-021 [TODO] 定义 LLM TaskCard
 

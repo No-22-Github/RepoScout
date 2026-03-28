@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/no22/repo-scout/internal/config"
+	"github.com/no22/repo-scout/internal/eval"
 	"github.com/no22/repo-scout/internal/output"
 	"github.com/no22/repo-scout/internal/runner"
 	"github.com/no22/repo-scout/internal/schema"
@@ -46,10 +47,7 @@ var evalCmd = &cobra.Command{
 
 Runs reposcout on multiple test cases and reports metrics like recall and precision.`,
 	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Running evaluation on dataset: %s\n", args[0])
-		// TODO: Implement actual evaluation logic
-	},
+	RunE: runEval,
 }
 
 var mcpCmd = &cobra.Command{
@@ -66,6 +64,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to runtime config file")
 	runCmd.Flags().StringP("format", "f", "json", "Output format (json or markdown)")
 	runCmd.Flags().StringP("output", "o", "", "Output file path (default: stdout)")
+	evalCmd.Flags().StringP("format", "f", "text", "Output format (text or json)")
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(evalCmd)
 	rootCmd.AddCommand(mcpCmd)
@@ -105,12 +104,12 @@ func runRecon(cmd *cobra.Command, args []string) error {
 	}
 
 	// Format output
-	var output []byte
+	var out []byte
 	switch format {
 	case "json":
-		output, err = formatJSON(contextPack)
+		out, err = formatJSON(contextPack)
 	case "markdown":
-		output, err = formatMarkdown(contextPack)
+		out, err = formatMarkdown(contextPack)
 	default:
 		return fmt.Errorf("unsupported format: %s (supported: json, markdown)", format)
 	}
@@ -121,14 +120,78 @@ func runRecon(cmd *cobra.Command, args []string) error {
 
 	// Write output
 	if outputPath != "" {
-		if err := os.WriteFile(outputPath, output, 0644); err != nil {
+		if err := os.WriteFile(outputPath, out, 0644); err != nil {
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
 		fmt.Printf("Output written to: %s\n", outputPath)
 	} else {
-		fmt.Println(string(output))
+		fmt.Println(string(out))
 	}
 
+	return nil
+}
+
+// runEval executes the evaluation pipeline.
+func runEval(cmd *cobra.Command, args []string) error {
+	// Get flags
+	format, err := cmd.Flags().GetString("format")
+	if err != nil {
+		return fmt.Errorf("failed to get format flag: %w", err)
+	}
+
+	// Load configuration
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create a runner function for the evaluator
+	runnerFunc := func(sample *eval.GoldenSample) ([]string, error) {
+		// Parse the recon request from the sample
+		reqData, err := json.Marshal(sample.ReconRequest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal recon request: %w", err)
+		}
+
+		req, err := schema.ParseReconRequest(reqData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse recon request: %w", err)
+		}
+
+		// Run the recon
+		r := runner.NewRunner(cfg)
+		contextPack, err := r.Run(req)
+		if err != nil {
+			return nil, fmt.Errorf("recon failed: %w", err)
+		}
+
+		// Return all files in reading order (which combines main_chain and companion_files)
+		return contextPack.ReadingOrder, nil
+	}
+
+	// Create evaluator and run
+	evaluator := eval.NewEvaluator(args[0], runnerFunc)
+	result, err := evaluator.RunEvaluation()
+	if err != nil {
+		return fmt.Errorf("evaluation failed: %w", err)
+	}
+
+	// Format output
+	var out string
+	switch format {
+	case "json":
+		out, err = eval.FormatJSON(result)
+	case "text":
+		out = eval.FormatText(result)
+	default:
+		return fmt.Errorf("unsupported format: %s (supported: text, json)", format)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to format output: %w", err)
+	}
+
+	fmt.Println(out)
 	return nil
 }
 
