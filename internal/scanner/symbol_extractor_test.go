@@ -212,12 +212,12 @@ void SettingsManager::LoadSettings() {
 }
 `,
 			wantSymKind: map[string]string{
-				"SettingsManager":  "class",
-				"Options":          "struct",
-				"LoadSettings":     "func",
-				"GetInstance":      "func",
-				"MAX_BUFFER_SIZE":  "macro",
-				"kDefaultTimeout":  "const",
+				"SettingsManager": "class",
+				"Options":         "struct",
+				"LoadSettings":    "func",
+				"GetInstance":     "func",
+				"MAX_BUFFER_SIZE": "macro",
+				"kDefaultTimeout": "const",
 			},
 		},
 	}

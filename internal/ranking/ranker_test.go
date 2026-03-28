@@ -372,13 +372,13 @@ func TestIsSubModule(t *testing.T) {
 		child, parent string
 		expected      bool
 	}{
-		{"browser/settings/ui", "browser/settings", true},  // ui is sub-module of settings
-		{"browser/settings", "browser/settings", true},     // same module
-		{"browser/settings", "browser", true},              // settings is sub-module of browser
-		{"browser", "browser/settings", false},             // browser is NOT sub-module of settings
-		{"chrome/browser", "browser/settings", false},      // no relation
-		{"", "browser", false},                             // empty child is not sub-module
-		{"browser", "", true},                              // anything is sub-module of root (empty parent)
+		{"browser/settings/ui", "browser/settings", true}, // ui is sub-module of settings
+		{"browser/settings", "browser/settings", true},    // same module
+		{"browser/settings", "browser", true},             // settings is sub-module of browser
+		{"browser", "browser/settings", false},            // browser is NOT sub-module of settings
+		{"chrome/browser", "browser/settings", false},     // no relation
+		{"", "browser", false},                            // empty child is not sub-module
+		{"browser", "", true},                             // anything is sub-module of root (empty parent)
 	}
 
 	for _, tt := range tests {
