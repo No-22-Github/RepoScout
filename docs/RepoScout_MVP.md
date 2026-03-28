@@ -1041,7 +1041,7 @@ reposcout mcp
   - `risk_hints`
   - `summary_markdown`
 
-### RS-006 [TODO] 实现 Repo 文件扫描
+### RS-006 [DONE] 实现 Repo 文件扫描
 
 目标：
 

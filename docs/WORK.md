@@ -111,16 +111,16 @@
 
 ### 当前功能点
 
-- `RS-005` [DONE]
+- `RS-006` [DONE]
 
 ### 本轮 Todo
 
 - `[x]` 阅读当前功能点要求和依赖
-- `[x]` 实现 internal/schema/context_pack.go
+- `[x]` 实现 internal/scanner/scanner.go
 - `[x]` 补充对应单元测试
 - `[x]` 运行格式化
 - `[x]` 运行与改动相关的测试
-- `[x]` 评估是否波及已有逻辑，并执行必要回归测试（无影响，仅新增 schema 包）
+- `[x]` 评估是否波及已有逻辑，并执行必要回归测试（无影响，仅新增 scanner 包）
 - `[x]` 更新 `docs/RepoScout_MVP.md`
 - `[x]` 更新 `docs/WORK.md`
 
@@ -265,20 +265,20 @@
 - 接入形态：CLI + MCP
 - 模型接口：OpenAI 兼容 `v1/chat/completions`
 - 模型策略：provider 可替换，RWKV-first
-- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义
-- 当前进度：`RS-005` 已完成
+- 代码状态：ReconRequest、FileCard、ContextPack Schema 已定义，Scanner 已实现
+- 当前进度：`RS-006` 已完成
 
 ## 10. 当前默认下一步
 
 当前默认应实现：
 
-- `RS-006` 实现 Repo 文件扫描
-
-完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1044)。
-
-如果 `RS-006` 完成，则下一步通常是：
-
 - `RS-007` 实现语言识别
+
+完成标准见 [RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md#L1068)。
+
+如果 `RS-007` 完成，则下一步通常是：
+
+- `RS-008` 实现模块路径归一化
 
 ---
 
