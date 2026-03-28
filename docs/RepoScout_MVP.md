@@ -1170,7 +1170,7 @@ reposcout mcp
   - `feature_flag`
 - 每个命中项都能写入 `discovered_by` 或 `heuristic_tags`
 
-### RS-011 [TODO] 实现 Browser Settings Profile 规则
+### RS-011 [DONE] 实现 Browser Settings Profile 规则
 
 目标：
 
@@ -1192,12 +1192,24 @@ reposcout mcp
 完成标准：
 
 - 至少支持识别：
-  - settings page
-  - handler/controller
-  - prefs registration
-  - strings/resources
-  - test files
-- 规则命中结果可解释
+  - settings page ✓
+  - handler/controller ✓
+  - prefs registration ✓
+  - strings/resources ✓ (复用 RS-010 的通用规则)
+  - test files ✓
+- 规则命中结果可解释 ✓
+
+实现：
+
+- `internal/heuristics/rules_profile_browser_settings.go`
+- `internal/heuristics/rules_profile_browser_settings_test.go`
+
+备注：
+
+- 实现了 `BrowserSettingsProfileRuleEngine` 结构体
+- 支持四种特定标签：`settings_page`、`handler`、`prefs_registration`、`browser_settings_test`
+- 每种规则都要求文件在 settings 上下文中才匹配
+- 通过 `MatchesProfile()` 函数判断是否应该应用此规则引擎
 
 ### RS-012 [TODO] 实现轻量符号抽取
 
