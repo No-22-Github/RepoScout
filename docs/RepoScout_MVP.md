@@ -1421,7 +1421,7 @@ reposcout mcp
 - 当请求缺少必要字段或 repo_root 不存在时，返回清晰的错误信息
 - 同时实现了基础的 Markdown 渲染（后续 RS-017 可增强）
 
-### RS-017 [TODO] 实现 Markdown 渲染
+### RS-017 [DONE] 实现 Markdown 渲染
 
 目标：
 
@@ -1442,11 +1442,24 @@ reposcout mcp
 完成标准：
 
 - 至少包含：
-  - 任务摘要
-  - 推荐先读文件
-  - 高优先级配套文件
-  - 风险提示
-  - 不确定点
+  - 任务摘要 ✓
+  - 推荐先读文件 ✓
+  - 高优先级配套文件 ✓
+  - 风险提示 ✓
+  - 不确定点 ✓
+
+实现：
+
+- `internal/output/markdown_renderer.go`
+- `internal/output/markdown_renderer_test.go`
+
+备注：
+
+- 实现了 `MarkdownRenderer` 结构体，支持可配置的渲染选项
+- 渲染选项包括：`IncludeStats`、`IncludeUncertain`、`MaxMainChainDisplay`、`MaxCompanionDisplay`、`MaxReadingOrderDisplay`
+- 按文档结构约束，创建了独立的 `internal/output` 包
+- 更新了 `cmd/reposcout/main.go` 使用新的渲染器
+- Markdown 输出结构清晰：任务摘要 → 主链路文件 → 配套文件 → 不确定点 → 阅读顺序 → 风险提示 → 统计信息
 
 ### RS-018 [TODO] 实现 `reposcout run --format markdown`
 

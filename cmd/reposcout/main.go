@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/no22/repo-scout/internal/config"
+	"github.com/no22/repo-scout/internal/output"
 	"github.com/no22/repo-scout/internal/runner"
 	"github.com/no22/repo-scout/internal/schema"
 	"github.com/spf13/cobra"
@@ -136,85 +137,8 @@ func formatJSON(pack *schema.ContextPack) ([]byte, error) {
 	return json.MarshalIndent(pack, "", "  ")
 }
 
-// formatMarkdown formats the ContextPack as Markdown.
-// This is a basic implementation; RS-017 will provide a full renderer.
+// formatMarkdown formats the ContextPack as Markdown using the output renderer.
 func formatMarkdown(pack *schema.ContextPack) ([]byte, error) {
-	var md string
-
-	md += fmt.Sprintf("# RepoScout ContextPack\n\n")
-	md += fmt.Sprintf("## Task\n\n%s\n\n", pack.Task)
-
-	if pack.RepoFamily != "" {
-		md += fmt.Sprintf("**Repo Family:** %s\n\n", pack.RepoFamily)
-	}
-
-	if len(pack.MainChain) > 0 {
-		md += "## Main Chain Files\n\n"
-		md += "These are the primary files that form the main execution path:\n\n"
-		for i, file := range pack.MainChain {
-			md += fmt.Sprintf("%d. `%s`\n", i+1, file)
-		}
-		md += "\n"
-	}
-
-	if len(pack.CompanionFiles) > 0 {
-		md += "## Companion Files\n\n"
-		md += "These are supporting files that provide additional context:\n\n"
-		for i, file := range pack.CompanionFiles {
-			md += fmt.Sprintf("%d. `%s`\n", i+1, file)
-		}
-		md += "\n"
-	}
-
-	if len(pack.UncertainNodes) > 0 {
-		md += "## Uncertain Files\n\n"
-		md += "These files might be relevant but need manual review:\n\n"
-		for _, file := range pack.UncertainNodes {
-			md += fmt.Sprintf("- `%s`\n", file)
-		}
-		md += "\n"
-	}
-
-	if len(pack.ReadingOrder) > 0 {
-		md += "## Recommended Reading Order\n\n"
-		for i, file := range pack.ReadingOrder {
-			md += fmt.Sprintf("%d. `%s`\n", i+1, file)
-		}
-		md += "\n"
-	}
-
-	if len(pack.RiskHints) > 0 {
-		md += "## Risk Hints\n\n"
-		for _, hint := range pack.RiskHints {
-			levelEmoji := map[string]string{
-				"info":    "ℹ️",
-				"warning": "⚠️",
-				"error":   "❌",
-			}
-			emoji := levelEmoji[hint.Level]
-			if emoji == "" {
-				emoji = "•"
-			}
-			md += fmt.Sprintf("%s **%s (%s):** %s\n", emoji, hint.Level, hint.Category, hint.Message)
-			if len(hint.AffectedFiles) > 0 {
-				md += "  - Affected files:\n"
-				for _, f := range hint.AffectedFiles {
-					md += fmt.Sprintf("    - `%s`\n", f)
-				}
-			}
-			md += "\n"
-		}
-	}
-
-	if pack.Stats != nil {
-		md += "## Statistics\n\n"
-		md += fmt.Sprintf("- Total files: %d\n", pack.Stats.TotalFiles)
-		md += fmt.Sprintf("- Main chain: %d\n", pack.Stats.MainChainCount)
-		md += fmt.Sprintf("- Companion: %d\n", pack.Stats.CompanionCount)
-		md += fmt.Sprintf("- Uncertain: %d\n", pack.Stats.UncertainCount)
-		md += fmt.Sprintf("- Analysis time: %dms\n", pack.Stats.AnalysisTimeMs)
-		md += fmt.Sprintf("- Model enhanced: %v\n", pack.Stats.ModelEnhanced)
-	}
-
-	return []byte(md), nil
+	renderer := output.NewMarkdownRenderer()
+	return []byte(renderer.Render(pack)), nil
 }
