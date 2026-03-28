@@ -1333,7 +1333,7 @@ reposcout mcp
 - 支持 `FileScoreBreakdown` 详细分数分解，便于解释排序结果
 - 模块权重计算支持同模块、子模块、父模块、共享前缀等多种关系
 
-### RS-015 [TODO] 组装无模型版 ContextPack
+### RS-015 [DONE] 组装无模型版 ContextPack
 
 目标：
 
@@ -1355,11 +1355,29 @@ reposcout mcp
 完成标准：
 
 - 能产出：
-  - `main_chain`
-  - `companion_files`
-  - `reading_order`
-  - `risk_hints`
-- 即使结果粗糙，也必须结构完整
+  - `main_chain` ✓
+  - `companion_files` ✓
+  - `reading_order` ✓
+  - `risk_hints` ✓
+- 即使结果粗糙，也必须结构完整 ✓
+
+实现：
+
+- `internal/pack/builder.go`
+- `internal/pack/builder_test.go`
+
+备注：
+
+- 实现了 `Builder` 结构体，将排序后的候选集组装成 `ContextPack`
+- 支持配置化阈值：`MainChainThreshold`、`CompanionThreshold`、`UncertainThreshold`
+- 支持各类文件数量限制：`MaxMainChain`、`MaxCompanion`、`MaxUncertain`
+- `classifyFiles` 方法根据分数将文件分类为 main_chain / companion_files / uncertain_nodes
+- `generateReadingOrder` 方法生成推荐阅读顺序（优先 main chain → companion → uncertain）
+- `generateRiskHints` 方法生成风险提示：
+  - test-coverage: 无测试文件时警告
+  - complexity: 文件符号过多时提示
+  - configuration: 检测到配置文件时提示
+- 提供 `BuildFromRankResult` 和 `BuildFromCards` 便捷函数
 
 ### RS-016 [TODO] 实现 `reposcout run --format json`
 
