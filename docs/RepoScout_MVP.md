@@ -1582,7 +1582,7 @@ reposcout mcp
 - 支持样本级明细输出（命中、漏失、额外文件）
 - CLI 命令：`reposcout eval <goldens_dir> [--format json|text]`
 
-### RS-021 [TODO] 定义 LLM TaskCard
+### RS-021 [DONE] 定义 LLM TaskCard
 
 目标：
 
@@ -1610,6 +1610,19 @@ reposcout mcp
   - `should_expand`
   - `is_implicit_dependency`
 - `TaskCard` 可以直接序列化成 prompt 输入
+
+实现：
+
+- `internal/llm/task_card.go`: TaskCard 定义和实现
+  - `TaskType`: 任务类型枚举，支持四种任务类型
+  - `TaskCard`: 任务卡片结构，包含文件信息、上下文、种子文件等
+  - `NewTaskCard()`: 从 FileCard 创建 TaskCard
+  - `NewTaskCardFromRequest()`: 从 ReconRequest 创建 TaskCard
+  - `ToPrompt()`: 生成 LLM prompt 字符串
+  - `ToJSON()`/`ToJSONIndent()`: JSON 序列化方法
+  - `TaskResult`: LLM 响应解析结果
+  - `ParseTaskResult()`: 解析 LLM 响应
+- `internal/llm/task_card_test.go`: 完整单元测试覆盖
 
 ### RS-022 [TODO] 实现 Provider Adapter 抽象层
 
