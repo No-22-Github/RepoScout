@@ -74,8 +74,9 @@ type RunnerFunc func(sample *GoldenSample) ([]string, error)
 
 // Evaluator evaluates RepoScout performance against golden samples.
 type Evaluator struct {
-	goldensDir string
-	runner     RunnerFunc
+	goldensDir     string
+	runner         RunnerFunc
+	singleSampleID string // If set, only evaluate this sample
 }
 
 // NewEvaluator creates a new Evaluator.
@@ -83,6 +84,15 @@ func NewEvaluator(goldensDir string, runner RunnerFunc) *Evaluator {
 	return &Evaluator{
 		goldensDir: goldensDir,
 		runner:     runner,
+	}
+}
+
+// NewSingleSampleEvaluator creates an Evaluator that only runs a specific sample.
+func NewSingleSampleEvaluator(goldensDir, sampleID string, runner RunnerFunc) *Evaluator {
+	return &Evaluator{
+		goldensDir:     goldensDir,
+		runner:         runner,
+		singleSampleID: sampleID,
 	}
 }
 
@@ -108,6 +118,11 @@ func (e *Evaluator) LoadGoldens() ([]*GoldenSample, error) {
 		sample, err := e.loadSample(samplePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load sample %s: %w", entry.Name(), err)
+		}
+
+		// Filter by single sample ID if set
+		if e.singleSampleID != "" && sample.ID != e.singleSampleID {
+			continue
 		}
 
 		samples = append(samples, sample)

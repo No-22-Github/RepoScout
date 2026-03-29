@@ -16,11 +16,28 @@ import (
 	"github.com/no22/repo-scout/internal/schema"
 )
 
+// ProgressReporter reports progress of pipeline phases.
+type ProgressReporter interface {
+	Start(phase string)
+	Startf(format string, args ...any)
+	Done()
+	DoneWithCount(count int, label string)
+}
+
+// noopProgress is a no-op progress reporter.
+type noopProgress struct{}
+
+func (n *noopProgress) Start(string)              {}
+func (n *noopProgress) Startf(string, ...any)     {}
+func (n *noopProgress) Done()                     {}
+func (n *noopProgress) DoneWithCount(int, string) {}
+
 // Runner orchestrates the full reconnaissance pipeline.
 type Runner struct {
 	config         *config.Config
 	adapter        llm.ProviderAdapter
 	adapterFactory func(*config.Config) llm.ProviderAdapter
+	progress       ProgressReporter
 }
 
 // NewRunner creates a new Runner with the given configuration.
@@ -29,7 +46,28 @@ func NewRunner(cfg *config.Config) *Runner {
 		cfg = config.DefaultConfig()
 	}
 	return &Runner{
-		config: cfg,
+		config:   cfg,
+		progress: &noopProgress{},
+		adapterFactory: func(cfg *config.Config) llm.ProviderAdapter {
+			if cfg == nil || !cfg.Runtime.EnableModelRerank || cfg.Provider.BaseURL == "" {
+				return nil
+			}
+			return llm.NewOpenAICompatibleAdapter(llm.AdapterConfigFromConfig(cfg))
+		},
+	}
+}
+
+// NewRunnerWithProgress creates a new Runner with progress reporting.
+func NewRunnerWithProgress(cfg *config.Config, progress ProgressReporter) *Runner {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	if progress == nil {
+		progress = &noopProgress{}
+	}
+	return &Runner{
+		config:   cfg,
+		progress: progress,
 		adapterFactory: func(cfg *config.Config) llm.ProviderAdapter {
 			if cfg == nil || !cfg.Runtime.EnableModelRerank || cfg.Provider.BaseURL == "" {
 				return nil
@@ -52,28 +90,38 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 	}
 
 	// Phase 1: Scan repository for all files
+	r.progress.Start("scanning repository")
 	allFiles, err := scanner.ScanRepo(req.RepoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan repository: %w", err)
 	}
+	r.progress.DoneWithCount(len(allFiles), "files")
 
 	// Phase 2: Expand seed files to candidate set
+	r.progress.Startf("expanding candidates (depth=%d)", req.EffectiveExpandDepth())
 	candidates, discoverySources := r.expandCandidates(req, allFiles)
 
 	// Also apply runtime config limit
 	if r.config.Runtime.MaxCandidates > 0 && len(candidates) > r.config.Runtime.MaxCandidates {
 		candidates = candidates[:r.config.Runtime.MaxCandidates]
 	}
+	r.progress.DoneWithCount(len(candidates), "candidates")
 
 	// Phase 3: Build FileCards for all candidates
+	r.progress.Start("building file cards")
 	cards := r.buildFileCards(candidates, req, discoverySources)
+	r.progress.DoneWithCount(len(cards), "cards")
 
 	// Phase 4: Optionally enrich cards with model judgments and rank candidates.
 	modelEnhanced := r.applyLLMRerank(req, cards)
+	r.progress.Start("ranking candidates")
 	rankResult := r.rankCards(cards)
+	r.progress.Done()
 
 	// Phase 5: Build ContextPack
+	r.progress.Start("building context pack")
 	contextPack := r.buildContextPack(req, rankResult, modelEnhanced)
+	r.progress.Done()
 
 	return contextPack, nil
 }
