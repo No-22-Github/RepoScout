@@ -89,7 +89,7 @@
 参考：
 ```jsonc
 {
-  "task_type": "classify_file_role | judge_relevance | should_expand | is_implicit_dependency",
+  "task_type": "classify_file_role | judge_relevance | is_implicit_dependency",
   "label": "controller",
   "confidence": 0.82,
   "reason": "Contains handler logic and bridges UI action to preference update"

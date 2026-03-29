@@ -1,211 +1,78 @@
-# RepoScout 实现状态与推进约束
+# RepoScout 实现状态
 
 更新时间：2026-03-29
 
-本文档不是产品愿景文档，而是当前仓库的工程状态说明。
+## 1. 当前已经有的能力
 
-目的只有三个：
+- 静态侦察主链路：
+  - `ReconRequest -> Candidate Expansion -> FileCard -> Ranker -> ContextPack`
+- 基础 CLI：
+  - `reposcout run`
+  - `reposcout eval`
+- 静态候选扩展：
+  - 同目录
+  - 同模块
+  - 文件名前缀匹配
+  - companion sibling 匹配
+- 基础规则与 `browser_settings` profile 规则
+- 轻量符号抽取
+- `ContextPack` 的 JSON / Markdown 输出
+- OpenAI-compatible provider 适配
+- 可选 LLM rerank：
+  - 当前只接 `classify_file_role`
+- 基于 token 预算的上下文构建：
+  - 文件概要
+  - imports / include 提示
+  - 相关声明
+  - 相关代码片段
 
-1. 明确哪些功能还没做
-2. 明确哪些地方已经做偏或仍需收口
-3. 明确后续功能在继续推进前必须验证什么
-
----
-
-## 1. 当前已完成到什么程度
-
-当前仓库已经完成：
-
-- 静态侦察主链路：`ReconRequest -> Static Scout -> Ranker -> ContextPack`
-- 基础 CLI：`reposcout run`、`reposcout eval`
-- 静态候选收缩：扫描、邻域扩展、规则命中、轻量符号抽取
-- `browser_settings` profile 的启发式规则
-- `ContextPack` 结构化输出：`main_chain`、`companion_files`、`reading_order`、`risk_hints`、`summary_markdown`
-- 可选 LLM rerank：当前只接通 `classify_file_role`
-
-当前仓库尚未完成：
+## 2. 当前还没有的能力
 
 - MCP 服务
-- `judge_relevance`
+- `judge_relevance` 主流程接入
+- `is_implicit_dependency` 主流程接入
+- import / include / registration 关系驱动的更强静态扩展
+- 面向真实 provider 的系统级联调文档
+
+## 3. 已明确降级或废弃的方向
+
+下面这些不再作为 RepoScout 的核心方向推进：
+
 - `should_expand`
-- `is_implicit_dependency`
 - 模型参与候选扩展
-- 面向真实 provider 的系统级联调文档与操作手册
-
----
-
-## 2. 还没做的功能
-
-### 2.1 必须做但还没做
-
-- MCP 服务接入
-  原因：MVP 文档中已将 MCP 作为正式交付形态之一。
-
-- 其余 3 类 LLM 任务接入主流程
-  包括：
-  - `judge_relevance`
-  - `should_expand`
-  - `is_implicit_dependency`
-
-- LLM 结果的评测指标补齐
-  现在只有测试通过，不代表召回和排序质量达标。
-
-- provider 配置与运行模式说明
-  需要把“纯静态模式”和“LLM rerank 模式”的使用方式写清楚。
-
-### 2.2 可以做但不该抢先做
-
-- 更复杂的 UI
-- 更重的 AST / LSP 级索引
-- 多轮规划型 Agent 能力
-- 自动 patch / 自动改代码
-
-这些都不应早于 MCP 和剩余 LLM 主链路。
-
----
-
-## 3. 已经做偏或需要特别警惕的地方
-
-### 3.1 文档愿景容易写得比实现快
-
-历史上本仓库已经出现过：
-
-- 文档里有
-- schema 里有
-- 配置里有
-- 但主流程没接上的情况
-
-后续禁止再次出现下面这种状态：
-
-- 新增一个字段
-- CLI 对外暴露
-- 文档宣称可用
-- 但 `runner` 主流程没有消费
-
-规则：
-
-- 任何新字段如果 `runner` 不消费，就不要暴露到公开接口
-- 任何新命令如果没有真实实现，就不要保留假入口
-
-### 3.2 LLM 已接入，但还不是“完整两段式”
-
-当前模型只参与：
-
-- 静态候选集上的 `classify_file_role` 重排
-
-当前模型没有参与：
-
-- 候选扩展
-- 隐式依赖识别
-- relevance 过滤
-
-因此不能把当前状态表述成“完整 LLM 侦察流程”。
-
-### 3.3 配置层仍然可能继续膨胀
-
-配置一旦继续增加，最容易再次失控。
-
-后续新增任何配置项前，必须先回答：
-
-1. 它由哪个模块消费？
-2. 不配置时默认行为是什么？
-3. 是否有测试覆盖？
-4. 是否真的需要暴露给用户？
-
----
-
-## 4. 后续推进前必须验证的事项
-
-这是最重要的一部分。
-
-后续所有功能都不能只看“代码能跑”，必须满足对应验证条件。
-
-### 4.1 推进 MCP 之前
-
-必须先验证：
-
-- `reposcout run` 的 JSON 输出 schema 稳定
-- `summary_markdown`、`reading_order`、`risk_hints` 在真实样例上可读
-- 错误输入时 CLI 返回信息可预测
+- LLM 驱动搜索
+- 让 RepoScout 接管上游 Agent 的规划职责
 
 原因：
 
-- MCP 只是 transport 层，不应把一个不稳定的 CLI 包一层继续放大问题。
+- 上游编程大模型通常已经会给 seed files
+- 调用方也可以自行传入额外候选文件
+- 再引入一层 LLM 驱动搜索会造成功能重叠
+- 会模糊“谁负责扩展决策”的边界
 
-### 4.2 推进新的 LLM 任务之前
+## 4. 当前最重要的工作
 
-必须先验证：
+1. 增强静态扩展搜索质量
+2. 增强 LLM 上下文构建质量
+3. 在真实仓库上验证 `classify_file_role` rerank 的收益
+4. 再决定是否接更多分析型 LLM 任务
+5. 最后补 MCP
 
-- 当前 `classify_file_role` rerank 在 golden 样例上有可测收益
-- provider 不可用时能稳定退回静态模式
-- 并发数升高时不会导致主流程异常或结果顺序不稳定
+## 5. 当前最重要的判断标准
 
-原因：
+继续开发时，优先看这些问题：
 
-- 如果当前这条最简单的 LLM 链路都没有收益证据，就不该继续叠加更多模型任务。
+1. 静态扩展是否能稳定给出高质量候选
+2. LLM rerank 是否真的改善了 `main_chain` / `companion_files`
+3. 额外耗时是否值得
+4. 输出结构是否足够稳定，能被上游 Agent 直接消费
 
-### 4.3 推进候选扩展型 LLM 之前
+## 6. 一句话结论
 
-必须先验证：
+当前仓库已经是一个可运行的静态分析 + 可选 LLM 分析工具。
 
-- 静态候选集的基础质量已经足够稳定
-- 当前 Top-N recall 基线已记录
-- 新增模型扩展后可以证明 recall 提升而不是只增加噪音
+下一步不应再扩张成 LLM 驱动搜索系统，而应继续做强：
 
-原因：
-
-- 候选扩展比 rerank 风险更高，很容易把输出规模和误报率拉爆。
-
-### 4.4 推进“更重静态分析”之前
-
-必须先验证：
-
-- 轻量规则和当前 symbol extraction 已经到达瓶颈
-- 有明确 case 证明当前漏报主要来自静态能力不足
-
-原因：
-
-- 当前产品阶段最怕过早进入重型程序分析，导致复杂度失控。
-
----
-
-## 5. 推荐推进顺序
-
-如果继续开发，建议严格按下面顺序走：
-
-1. 验证当前 `classify_file_role` rerank 的实际收益
-2. 补 MCP 最小可用版
-3. 接 `judge_relevance`
-4. 接 `is_implicit_dependency`
-5. 评估是否真的需要 `should_expand`
-6. 最后再考虑更重的静态分析
-
-不建议的顺序：
-
-- 先做 MCP 复杂能力，再验证 rerank 是否有效
-- 先做更多模型任务，再补评测
-- 先做更复杂静态索引，再把当前流程跑通
-
----
-
-## 6. 继续推进的硬规则
-
-从现在开始，任何功能要合入，都应满足以下最低要求：
-
-- 有明确入口，不是挂名能力
-- `runner` 主流程真实消费
-- 至少有一个对应测试
-- 文档与实现一致
-- provider 不可用时有明确降级或报错行为
-
-如果不满足以上 5 条，不应继续推进到下一阶段。
-
----
-
-## 7. 一句话结论
-
-当前仓库已经脱离“空壳 MVP”，进入了“静态 MVP 已成型，LLM Phase 2 起步”的状态。
-
-接下来最重要的不是继续铺功能面，而是：
-
-**先验证当前 LLM rerank 是否真的有价值，再决定后续 MCP 和多任务 LLM 的推进节奏。**
+- 静态扩展搜索
+- 候选文件分析
+- `ContextPack` 质量
