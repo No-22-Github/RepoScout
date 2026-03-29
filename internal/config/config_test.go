@@ -21,6 +21,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Runtime.RequestTimeoutSec <= 0 {
 		t.Error("default runtime.request_timeout_sec should be positive")
 	}
+	if cfg.Runtime.MaxInputTokens <= 0 {
+		t.Error("default runtime.max_input_tokens should be positive")
+	}
 	if cfg.Runtime.MaxCandidates <= 0 {
 		t.Error("default runtime.max_candidates should be positive")
 	}
@@ -50,6 +53,7 @@ func TestLoadValidFile(t *testing.T) {
 		"runtime": {
 			"max_concurrency": 8,
 			"request_timeout_sec": 60,
+			"max_input_tokens": 8192,
 			"max_candidates": 200,
 			"max_output_files": 100,
 			"enable_model_rerank": false
@@ -85,6 +89,9 @@ func TestLoadValidFile(t *testing.T) {
 	if cfg.Runtime.RequestTimeoutSec != 60 {
 		t.Errorf("expected request_timeout_sec 60, got %d", cfg.Runtime.RequestTimeoutSec)
 	}
+	if cfg.Runtime.MaxInputTokens != 8192 {
+		t.Errorf("expected max_input_tokens 8192, got %d", cfg.Runtime.MaxInputTokens)
+	}
 	if cfg.Runtime.MaxCandidates != 200 {
 		t.Errorf("expected max_candidates 200, got %d", cfg.Runtime.MaxCandidates)
 	}
@@ -100,10 +107,12 @@ func TestLoadWithEnvOverride(t *testing.T) {
 	os.Setenv("REPOSCOUT_PROVIDER_BASE_URL", "https://env.override/v1")
 	os.Setenv("REPOSCOUT_PROVIDER_API_KEY", "env-key")
 	os.Setenv("REPOSCOUT_RUNTIME_MAX_CONCURRENCY", "16")
+	os.Setenv("REPOSCOUT_RUNTIME_MAX_INPUT_TOKENS", "2048")
 	defer func() {
 		os.Unsetenv("REPOSCOUT_PROVIDER_BASE_URL")
 		os.Unsetenv("REPOSCOUT_PROVIDER_API_KEY")
 		os.Unsetenv("REPOSCOUT_RUNTIME_MAX_CONCURRENCY")
+		os.Unsetenv("REPOSCOUT_RUNTIME_MAX_INPUT_TOKENS")
 	}()
 
 	cfg, err := Load("")
@@ -119,6 +128,9 @@ func TestLoadWithEnvOverride(t *testing.T) {
 	}
 	if cfg.Runtime.MaxConcurrency != 16 {
 		t.Errorf("expected max_concurrency 16, got %d", cfg.Runtime.MaxConcurrency)
+	}
+	if cfg.Runtime.MaxInputTokens != 2048 {
+		t.Errorf("expected max_input_tokens 2048, got %d", cfg.Runtime.MaxInputTokens)
 	}
 }
 
@@ -137,7 +149,7 @@ func TestValidate(t *testing.T) {
 			name: "empty base_url is allowed in static mode",
 			cfg: &Config{
 				Provider: ProviderConfig{BaseURL: ""},
-				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxCandidates: 100, MaxOutputFiles: 50},
+				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxInputTokens: 4096, MaxCandidates: 100, MaxOutputFiles: 50},
 			},
 			wantErr: false,
 		},
@@ -145,7 +157,7 @@ func TestValidate(t *testing.T) {
 			name: "zero max_concurrency",
 			cfg: &Config{
 				Provider: ProviderConfig{BaseURL: "https://api.example.com/v1"},
-				Runtime:  RuntimeConfig{MaxConcurrency: 0, RequestTimeoutSec: 30, MaxCandidates: 100, MaxOutputFiles: 50},
+				Runtime:  RuntimeConfig{MaxConcurrency: 0, RequestTimeoutSec: 30, MaxInputTokens: 4096, MaxCandidates: 100, MaxOutputFiles: 50},
 			},
 			wantErr: true,
 		},
@@ -153,7 +165,15 @@ func TestValidate(t *testing.T) {
 			name: "negative max_candidates",
 			cfg: &Config{
 				Provider: ProviderConfig{BaseURL: "https://api.example.com/v1"},
-				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxCandidates: -1, MaxOutputFiles: 50},
+				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxInputTokens: 4096, MaxCandidates: -1, MaxOutputFiles: 50},
+			},
+			wantErr: true,
+		},
+		{
+			name: "zero max_input_tokens",
+			cfg: &Config{
+				Provider: ProviderConfig{BaseURL: "https://api.example.com/v1"},
+				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxInputTokens: 0, MaxCandidates: 100, MaxOutputFiles: 50},
 			},
 			wantErr: true,
 		},

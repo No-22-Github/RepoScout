@@ -252,7 +252,8 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 	taskCards := make([]*llm.TaskCard, 0, len(targetCards))
 	for _, card := range targetCards {
 		taskCard := llm.NewTaskCardFromRequest(llm.TaskClassifyFileRole, req, card)
-		taskCard.SetContextSnippet(buildTaskContext(card))
+		maxContextTokens := r.config.Runtime.MaxInputTokens - estimateTokenCount(taskCard.ToPrompt())
+		taskCard.SetContextSnippet(buildTaskContext(req.RepoRoot, card, req.FocusSymbols, maxContextTokens))
 		taskCards = append(taskCards, taskCard)
 	}
 
@@ -271,21 +272,6 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 		successful++
 	}
 	return successful > 0
-}
-
-func buildTaskContext(card *schema.FileCard) string {
-	if card == nil {
-		return ""
-	}
-
-	context := ""
-	if len(card.DiscoveredBy) > 0 {
-		context += "Discovered by: " + joinLimited(card.DiscoveredBy, 4) + "\n"
-	}
-	if len(card.HeuristicTags) > 0 {
-		context += "Heuristic tags: " + joinLimited(card.HeuristicTags, 4) + "\n"
-	}
-	return context
 }
 
 func joinLimited(values []string, limit int) string {

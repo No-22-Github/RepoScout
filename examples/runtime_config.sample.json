@@ -8,6 +8,7 @@
   "runtime": {
     "max_concurrency": 4,
     "request_timeout_sec": 30,
+    "max_input_tokens": 4096,
     "max_candidates": 100,
     "max_output_files": 50,
     "enable_model_rerank": true

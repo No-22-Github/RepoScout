@@ -25,6 +25,11 @@ type ExpandConfig struct {
 	// Default is true.
 	IncludePrefixMatch bool
 
+	// IncludeSiblingMatch includes likely companion files such as implementation/test
+	// pairs and source/header pairs discovered by normalized basename matching.
+	// Default is true.
+	IncludeSiblingMatch bool
+
 	// PrefixMinLength is the minimum length for prefix matching.
 	// Files with names shorter than this are not used for prefix matching.
 	// Default is 3.
@@ -34,11 +39,12 @@ type ExpandConfig struct {
 // DefaultExpandConfig returns the default configuration for neighbor expansion.
 func DefaultExpandConfig() *ExpandConfig {
 	return &ExpandConfig{
-		ModuleConfig:       nil,
-		IncludeSameDir:     true,
-		IncludeSameModule:  true,
-		IncludePrefixMatch: true,
-		PrefixMinLength:    3,
+		ModuleConfig:        nil,
+		IncludeSameDir:      true,
+		IncludeSameModule:   true,
+		IncludePrefixMatch:  true,
+		IncludeSiblingMatch: true,
+		PrefixMinLength:     3,
 	}
 }
 
@@ -103,6 +109,11 @@ func (ne *NeighborExpander) Expand(seedFiles, allFiles []string) []string {
 		// 3. Prefix match expansion
 		if ne.config.IncludePrefixMatch {
 			ne.expandPrefixMatch(seed, allFiles, candidates)
+		}
+
+		// 4. Companion sibling expansion
+		if ne.config.IncludeSiblingMatch {
+			ne.expandSiblingMatch(seed, allFiles, candidates)
 		}
 	}
 
@@ -194,6 +205,14 @@ func (ne *NeighborExpander) expandPrefixMatch(seed string, allFiles []string, ca
 	}
 }
 
+func (ne *NeighborExpander) expandSiblingMatch(seed string, allFiles []string, candidates map[string]bool) {
+	for _, file := range allFiles {
+		if ne.isSiblingMatch(seed, file) {
+			candidates[file] = true
+		}
+	}
+}
+
 // buildModuleToFileMap creates a mapping from module names to file paths.
 func (ne *NeighborExpander) buildModuleToFileMap(allFiles []string) {
 	ne.moduleToFileMap = make(map[string][]string)
@@ -217,10 +236,11 @@ func ExpandNeighborsWithConfig(seedFiles, allFiles []string, config *ExpandConfi
 type ExpansionSource string
 
 const (
-	SourceSeed        ExpansionSource = "seed"
-	SourceSameDir     ExpansionSource = "same_dir"
-	SourceSameModule  ExpansionSource = "same_module"
-	SourcePrefixMatch ExpansionSource = "prefix_match"
+	SourceSeed         ExpansionSource = "seed"
+	SourceSameDir      ExpansionSource = "same_dir"
+	SourceSameModule   ExpansionSource = "same_module"
+	SourcePrefixMatch  ExpansionSource = "prefix_match"
+	SourceSiblingMatch ExpansionSource = "sibling_match"
 )
 
 // ExpansionResult contains detailed information about how each file was discovered.
@@ -323,6 +343,16 @@ func (ne *NeighborExpander) ExpandWithSources(seedFiles, allFiles []string) *Exp
 				}
 			}
 		}
+
+		// 4. Companion sibling expansion
+		if ne.config.IncludeSiblingMatch {
+			for _, file := range allFiles {
+				if ne.isSiblingMatch(seed, file) && !candidates[file] {
+					candidates[file] = true
+					sources[file] = append(sources[file], SourceSiblingMatch)
+				}
+			}
+		}
 	}
 
 	// Convert to sorted slice
@@ -336,4 +366,79 @@ func (ne *NeighborExpander) ExpandWithSources(seedFiles, allFiles []string) *Exp
 		Candidates: result,
 		Sources:    sources,
 	}
+}
+
+func (ne *NeighborExpander) isSiblingMatch(seed, file string) bool {
+	if seed == "" || file == "" || seed == file {
+		return false
+	}
+
+	seedBase := strings.TrimSuffix(filepath.Base(seed), filepath.Ext(seed))
+	fileBase := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	if seedBase == "" || fileBase == "" {
+		return false
+	}
+
+	seedStem := normalizedCompanionStem(seedBase)
+	fileStem := normalizedCompanionStem(fileBase)
+	if seedStem == "" || seedStem != fileStem {
+		return false
+	}
+
+	seedDir := filepath.Dir(seed)
+	fileDir := filepath.Dir(file)
+	sameDir := seedDir == fileDir
+	sameModule := ne.moduleDetector.Detect(seed) == ne.moduleDetector.Detect(file)
+
+	seedExt := strings.ToLower(filepath.Ext(seed))
+	fileExt := strings.ToLower(filepath.Ext(file))
+
+	if isTestCompanionPair(seedBase, fileBase) {
+		return sameDir || sameModule
+	}
+
+	if isSourceHeaderPair(seedExt, fileExt) {
+		return sameDir || sameModule
+	}
+
+	return false
+}
+
+func normalizedCompanionStem(base string) string {
+	lower := strings.ToLower(base)
+	suffixes := []string{
+		"_test", "_tests", ".test", ".tests",
+		"_spec", "_specs", ".spec", ".specs",
+		"_mock", ".mock", "_fixture", ".fixture",
+	}
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return strings.TrimSuffix(lower, suffix)
+		}
+	}
+	return lower
+}
+
+func isTestCompanionPair(a, b string) bool {
+	aNorm := strings.ToLower(a)
+	bNorm := strings.ToLower(b)
+	return aNorm != bNorm && normalizedCompanionStem(aNorm) == normalizedCompanionStem(bNorm)
+}
+
+func isSourceHeaderPair(aExt, bExt string) bool {
+	pairs := map[string]map[string]bool{
+		".c":   {".h": true},
+		".cc":  {".h": true, ".hh": true, ".hpp": true},
+		".cpp": {".h": true, ".hh": true, ".hpp": true},
+		".h":   {".c": true, ".cc": true, ".cpp": true},
+		".hh":  {".cc": true, ".cpp": true},
+		".hpp": {".cc": true, ".cpp": true},
+	}
+	if targets, ok := pairs[aExt]; ok && targets[bExt] {
+		return true
+	}
+	if targets, ok := pairs[bExt]; ok && targets[aExt] {
+		return true
+	}
+	return false
 }

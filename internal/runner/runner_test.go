@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/no22/repo-scout/internal/config"
@@ -42,11 +43,20 @@ func main() {
 }`,
 		"internal/auth/handler.go": `package auth
 
+import (
+	"errors"
+
+	"test-repo/internal/config"
+)
+
 type Handler struct {
 	Name string
 }
 
-func (h *Handler) Login() error {
+func (h *Handler) Login(cfg config.Config) error {
+	if cfg.Port == 0 {
+		return errors.New("invalid config")
+	}
 	return nil
 }`,
 		"internal/auth/middleware.go": `package auth
@@ -266,6 +276,7 @@ func TestRunner_LLMRerank(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Runtime.EnableModelRerank = true
 	cfg.Runtime.MaxConcurrency = 2
+	cfg.Runtime.MaxInputTokens = 256
 
 	r := NewRunner(cfg)
 	mockAdapter := llm.NewMockAdapter()
@@ -314,6 +325,49 @@ func TestRunner_LLMRerank(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected LLM rerank to promote internal/auth/handler.go, got main_chain=%v", pack.MainChain)
+	}
+}
+
+func TestBuildTaskContext_FillsRemainingBudgetWithSnippets(t *testing.T) {
+	repoRoot := createTestRepo(t)
+	card := schema.NewFileCard("internal/auth/handler.go")
+	card.Lang = "go"
+	card.Symbols = []string{"Handler", "Login"}
+	card.DiscoveredBy = []string{"seed"}
+	card.HeuristicTags = []string{"auth"}
+
+	context := buildTaskContext(repoRoot, card, []string{"Login"}, 128)
+
+	if !strings.Contains(context, "Relevant code snippets:") {
+		t.Fatalf("expected context to include code snippets, got: %s", context)
+	}
+	if !strings.Contains(context, "Login") {
+		t.Fatalf("expected context to include Login snippet, got: %s", context)
+	}
+	if got := estimateTokenCount(context); got > 128 {
+		t.Fatalf("expected context to stay within budget, got %d tokens", got)
+	}
+}
+
+func TestBuildTaskContext_IncludesOutlineAndImports(t *testing.T) {
+	repoRoot := createTestRepo(t)
+	card := schema.NewFileCard("internal/auth/handler.go")
+	card.Lang = "go"
+	card.Symbols = []string{"Handler", "Login"}
+
+	context := buildTaskContext(repoRoot, card, []string{"Login"}, 220)
+
+	if !strings.Contains(context, "File outline:") {
+		t.Fatalf("expected file outline in context, got: %s", context)
+	}
+	if !strings.Contains(context, "Package: auth") {
+		t.Fatalf("expected package hint in context, got: %s", context)
+	}
+	if !strings.Contains(context, "test-repo/internal/config") {
+		t.Fatalf("expected import hint in context, got: %s", context)
+	}
+	if !strings.Contains(context, "func (h *Handler) Login") {
+		t.Fatalf("expected declaration hint in context, got: %s", context)
 	}
 }
 

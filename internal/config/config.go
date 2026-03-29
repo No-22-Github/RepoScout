@@ -26,6 +26,10 @@ type RuntimeConfig struct {
 	MaxConcurrency int `json:"max_concurrency"`
 	// RequestTimeoutSec is the timeout for API requests in seconds.
 	RequestTimeoutSec int `json:"request_timeout_sec"`
+	// MaxInputTokens is the prompt budget used when assembling LLM input.
+	// RepoScout preserves the metadata prompt and uses the remaining budget
+	// to attach code snippets and other context.
+	MaxInputTokens int `json:"max_input_tokens"`
 	// MaxCandidates limits the number of candidate files.
 	MaxCandidates int `json:"max_candidates"`
 	// MaxOutputFiles limits the number of files in output.
@@ -52,6 +56,7 @@ func DefaultConfig() *Config {
 		Runtime: RuntimeConfig{
 			MaxConcurrency:    4,
 			RequestTimeoutSec: 30,
+			MaxInputTokens:    4096,
 			MaxCandidates:     100,
 			MaxOutputFiles:    50,
 			EnableModelRerank: false,
@@ -110,6 +115,12 @@ func Load(path string) (*Config, error) {
 			cfg.Runtime.RequestTimeoutSec = n
 		}
 	}
+	if v := os.Getenv("REPOSCOUT_RUNTIME_MAX_INPUT_TOKENS"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			cfg.Runtime.MaxInputTokens = n
+		}
+	}
 	if v := os.Getenv("REPOSCOUT_RUNTIME_MAX_CANDIDATES"); v != "" {
 		var n int
 		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
@@ -136,6 +147,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Runtime.RequestTimeoutSec <= 0 {
 		return fmt.Errorf("runtime.request_timeout_sec must be positive")
+	}
+	if c.Runtime.MaxInputTokens <= 0 {
+		return fmt.Errorf("runtime.max_input_tokens must be positive")
 	}
 	if c.Runtime.MaxCandidates <= 0 {
 		return fmt.Errorf("runtime.max_candidates must be positive")

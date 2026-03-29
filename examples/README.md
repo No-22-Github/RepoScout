@@ -7,6 +7,8 @@
 
 - `runtime_config.sample.json`
   运行配置样例。默认用于演示如何开启可选的 LLM rerank。
+  其中 `runtime.max_input_tokens` 用于控制单次 LLM 输入预算：
+  元数据 prompt 先保留，再尽量用相关代码片段填满剩余预算。
 
 ## 直接运行
 

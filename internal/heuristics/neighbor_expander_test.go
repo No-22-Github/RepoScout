@@ -80,9 +80,10 @@ func TestNeighborExpander_Expand(t *testing.T) {
 			name:      "disable same dir expansion",
 			seedFiles: []string{"browser/settings/settings_page.cc"},
 			config: &ExpandConfig{
-				IncludeSameDir:     false,
-				IncludeSameModule:  false,
-				IncludePrefixMatch: false,
+				IncludeSameDir:      false,
+				IncludeSameModule:   false,
+				IncludePrefixMatch:  false,
+				IncludeSiblingMatch: false,
 			},
 			wantContains: []string{
 				"browser/settings/settings_page.cc",
@@ -242,9 +243,10 @@ func TestExpandNeighborsWithConfig(t *testing.T) {
 
 	// Config that only does same directory
 	config := &ExpandConfig{
-		IncludeSameDir:     true,
-		IncludeSameModule:  false,
-		IncludePrefixMatch: false,
+		IncludeSameDir:      true,
+		IncludeSameModule:   false,
+		IncludePrefixMatch:  false,
+		IncludeSiblingMatch: false,
 	}
 
 	result := ExpandNeighborsWithConfig(seedFiles, allFiles, config)
@@ -280,10 +282,11 @@ func TestPrefixMatch(t *testing.T) {
 
 	// Use config that only does prefix match
 	config := &ExpandConfig{
-		IncludeSameDir:     false,
-		IncludeSameModule:  false,
-		IncludePrefixMatch: true,
-		PrefixMinLength:    3,
+		IncludeSameDir:      false,
+		IncludeSameModule:   false,
+		IncludePrefixMatch:  true,
+		IncludeSiblingMatch: false,
+		PrefixMinLength:     3,
 	}
 
 	result := ExpandNeighborsWithConfig(seedFiles, allFiles, config)
@@ -324,10 +327,11 @@ func TestPrefixMatchShortNames(t *testing.T) {
 	seedFiles := []string{"ab.go"}
 
 	config := &ExpandConfig{
-		IncludeSameDir:     false,
-		IncludeSameModule:  false,
-		IncludePrefixMatch: true,
-		PrefixMinLength:    3,
+		IncludeSameDir:      false,
+		IncludeSameModule:   false,
+		IncludePrefixMatch:  true,
+		IncludeSiblingMatch: false,
+		PrefixMinLength:     3,
 	}
 
 	result := ExpandNeighborsWithConfig(seedFiles, allFiles, config)
@@ -356,10 +360,11 @@ func TestModuleExpansionWithCustomModuleConfig(t *testing.T) {
 	}
 
 	config := &ExpandConfig{
-		ModuleConfig:       moduleConfig,
-		IncludeSameDir:     false,
-		IncludeSameModule:  true,
-		IncludePrefixMatch: false,
+		ModuleConfig:        moduleConfig,
+		IncludeSameDir:      false,
+		IncludeSameModule:   true,
+		IncludePrefixMatch:  false,
+		IncludeSiblingMatch: false,
 	}
 
 	result := ExpandNeighborsWithConfig(seedFiles, allFiles, config)
@@ -380,6 +385,80 @@ func TestModuleExpansionWithCustomModuleConfig(t *testing.T) {
 	// Files in "pages" module should not be included
 	if resultSet["src/pages/Home.tsx"] {
 		t.Error("different module file should not be included")
+	}
+}
+
+func TestSiblingMatchExpansion(t *testing.T) {
+	allFiles := []string{
+		"internal/auth/handler.go",
+		"internal/auth/handler_test.go",
+		"internal/auth/handler_mock.go",
+		"internal/auth/middleware.go",
+		"internal/native/bridge.cc",
+		"internal/native/bridge.h",
+	}
+
+	t.Run("implementation pulls in test companion", func(t *testing.T) {
+		result := ExpandNeighbors([]string{"internal/auth/handler.go"}, allFiles)
+		resultSet := make(map[string]bool)
+		for _, f := range result {
+			resultSet[f] = true
+		}
+
+		if !resultSet["internal/auth/handler_test.go"] {
+			t.Fatalf("expected handler_test.go to be included, got %v", result)
+		}
+		if !resultSet["internal/auth/handler_mock.go"] {
+			t.Fatalf("expected handler_mock.go to be included, got %v", result)
+		}
+	})
+
+	t.Run("source pulls in header companion", func(t *testing.T) {
+		config := &ExpandConfig{
+			IncludeSameDir:      false,
+			IncludeSameModule:   false,
+			IncludePrefixMatch:  false,
+			IncludeSiblingMatch: true,
+		}
+		result := ExpandNeighborsWithConfig([]string{"internal/native/bridge.cc"}, allFiles, config)
+		resultSet := make(map[string]bool)
+		for _, f := range result {
+			resultSet[f] = true
+		}
+
+		if !resultSet["internal/native/bridge.h"] {
+			t.Fatalf("expected bridge.h to be included, got %v", result)
+		}
+		if resultSet["internal/auth/middleware.go"] {
+			t.Fatalf("unexpected unrelated file in result: %v", result)
+		}
+	})
+}
+
+func TestExpandWithSources_SiblingMatchSource(t *testing.T) {
+	allFiles := []string{
+		"pkg/task/task_context.go",
+		"pkg/task/task_context_test.go",
+	}
+
+	expander := NewNeighborExpander(&ExpandConfig{
+		IncludeSameDir:      false,
+		IncludeSameModule:   false,
+		IncludePrefixMatch:  false,
+		IncludeSiblingMatch: true,
+	})
+	result := expander.ExpandWithSources([]string{"pkg/task/task_context.go"}, allFiles)
+
+	sources := result.Sources["pkg/task/task_context_test.go"]
+	found := false
+	for _, source := range sources {
+		if source == SourceSiblingMatch {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected sibling match source, got %v", sources)
 	}
 }
 
