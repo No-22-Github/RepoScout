@@ -1,91 +1,83 @@
-# RepoScout MVP
+# RepoScout 项目说明与实现思路
 
 更新时间：2026-03-29
 
-## 1. 当前定位
+## 这个项目想解决什么
 
-`RepoScout` 不是一个二次规划型 Agent，也不是一个 LLM 驱动的搜索控制器。
+RepoScout 面向的是已经会写代码、也会自己做规划的通用编程 Agent。
 
-当前版本的定位已经收口为：
+它不去替代上游 Agent，而是专门处理一个更窄、但很常见的问题：当任务落到一个不熟悉的大仓库里时，怎么先把“应该读哪些文件”这件事做得更稳一点。
 
-- 输入：任务描述、仓库路径、少量 seed files
-- 过程：
-  - 先用静态分析做候选文件扩展和收缩
-  - 再可选地用 LLM 对候选文件做轻量分析和重排
-- 输出：给上游编程 Agent 直接消费的 `ContextPack`
+很多任务一开始都能找到主文件，但很容易漏掉这些东西：
+
+- 配套测试
+- 默认配置
+- 注册点
+- 资源文件
+- 同模块下的隐式依赖
+
+RepoScout 的目标，就是把这批候选先收出来，再整理成一份更适合继续阅读的 `ContextPack`。
+
+## 当前产品边界
+
+RepoScout 当前是一个 analysis-first 的 repo recon 工具。
+
+它负责：
+
+- 根据 `seed_files` 做静态扩展搜索
+- 构建候选文件的 `FileCard`
+- 可选用 LLM 分析候选文件并 rerank
+- 输出结构化的 `ContextPack`
+
+它不负责：
+
+- 接管上游 Agent 的规划
+- 自己做多轮 LLM 驱动搜索
+- 决定用户整体任务该怎么拆
 
 一句话：
 
-**RepoScout 是一个 analysis-first 的 repo recon 工具，不是一个 LLM-driven 的搜索编排层。**
+**静态层负责找候选，LLM 层负责分析候选，上游 Agent 负责继续规划和执行。**
 
----
+## 为什么不做 LLM 驱动搜索
 
-## 2. 为什么要这样收口
+这个方向现在已经明确降级。
 
-如果上游本身就是 Codex、Claude Code、Cursor 这类编程大模型，那么它通常已经具备：
+原因很简单：如果上游本身就是 Codex、Claude Code、Cursor 这类编程模型，那它通常已经能：
 
-- 给出 seed files 的能力
-- 基于上下文自己决定下一步看的文件
-- 在必要时继续发起额外搜索或补充候选文件
+- 提供 seed files
+- 根据当前结果继续决定往哪里看
+- 在必要时补充新的候选文件
 
-因此 RepoScout 不应该再引入一层模型驱动搜索，否则会出现：
+这时 RepoScout 再加一层 `should_expand` 式搜索控制，收益不一定大，反而容易带来：
 
-- 与上游 Agent 的规划能力重叠
-- 责任边界不清
-- 评测复杂度上升
-- 用户不知道“是谁决定扩展错了”
+- 责任边界重叠
+- 评测困难
+- 结果归因模糊
 
-所以当前方向明确调整为：
+所以当前路线很明确：
 
-- 保留并增强静态文件扩展搜索
-- 保留并增强 LLM 对候选文件的分析能力
-- 不再把 LLM 驱动搜索当作核心卖点
+- 保留并增强静态扩展搜索
+- 保留并增强 LLM 候选分析
+- 不再把 LLM 驱动搜索当成核心卖点
 
----
+## 当前主链路
 
-## 3. 核心能力边界
+```text
+ReconRequest
+  ->
+Static Candidate Expansion
+  ->
+FileCard
+  ->
+Optional LLM Rerank
+  ->
+ContextPack
+```
 
-### 3.1 保留并增强的能力
+## 当前已经实现的部分
 
-- 基于 seed 的静态扩展搜索
-- 候选文件的静态收缩与排序
-- 基于候选文件的 LLM 轻量分析
-- 结构化 `ContextPack` 输出
-
-### 3.2 明确不作为核心方向的能力
-
-- `LLM` 决定是否继续扩展文件搜索
-- `LLM` 接管上游 Agent 的规划职责
-- RepoScout 自己做多轮驱动式搜索
-
-### 3.3 仍然需要的静态扩展搜索
-
-静态扩展不是要削弱，而是要继续增强。
-
-优先增强的方向：
-
-- seed 文件邻域扩展
-- 同目录 / 同模块扩展
-- 文件名模式匹配
-- companion file 匹配
-  - 实现 / 测试
-  - 源文件 / 头文件
-  - mock / fixture / spec
-- import / include / registration 关系
-
-原则：
-
-**静态层负责“找候选”，LLM 层负责“分析候选”。**
-
----
-
-## 4. 当前已实现能力
-
-当前仓库已经具备：
-
-- 静态主链路：
-  - `ReconRequest -> Candidate Expansion -> FileCard -> Ranker -> ContextPack`
-- CLI：
+- CLI 主链路：
   - `reposcout run`
   - `reposcout eval`
 - 静态候选扩展：
@@ -93,59 +85,40 @@
   - 同模块
   - 文件名前缀匹配
   - companion sibling 匹配
-- 基础启发式规则与 profile 规则
+- 基础启发式规则与 profile 支持
 - 轻量符号抽取
 - `ContextPack` 的 JSON / Markdown 输出
 - OpenAI-compatible provider 接口
 - LLM rerank：
-  - 当前只接 `classify_file_role`
-- LLM 上下文预算控制：
-  - `runtime.max_input_tokens`
-  - 尽量用文件概要、imports 和相关代码片段贴近预算上限
+  - 当前接入 `classify_file_role`
+- 基于 token 预算的上下文构建：
+  - 文件概要
+  - imports / include 提示
+  - 相关声明
+  - 相关代码片段
 
----
+## 当前还没做完，但值得继续做的部分
 
-## 5. 当前明确未做的能力
-
-当前未实现：
-
-- MCP 服务入口
+- import / include / registration 驱动的更强静态扩展
 - `judge_relevance` 主流程接入
 - `is_implicit_dependency` 主流程接入
-- import / include / registration 驱动的更强静态扩展
-- 面向真实 provider 的系统级联调文档
+- 在真实大仓库上验证纯静态和 LLM rerank 的收益差
+- MCP 服务入口
 
-当前不再作为主方向推进：
+## 输入输出怎么理解
 
-- `should_expand`
-- 模型参与候选扩展
-- LLM 驱动搜索
+### ReconRequest
 
----
+这是上游传给 RepoScout 的任务输入，重点字段通常是：
 
-## 6. MVP 成功标准
+- `task`
+- `repo_root`
+- `seed_files`
+- `focus_symbols`
+- `focus_checks`
+- `budget`
 
-当前版本不追求“完全自动找全文件”，只追求下面几件事成立：
-
-1. 在真实仓库中，静态扩展搜索能稳定给出一批高质量候选。
-2. 在这批候选上，LLM rerank 能比纯静态排序更稳定地提升 `main_chain` 和 `companion_files` 质量。
-3. 输出结构足够稳定，可被上游 Agent 直接消费。
-
-建议重点看这几类指标：
-
-- Top-10 / Top-20 关键文件召回
-- `main_chain` 质量
-- `companion_files` 噪音率
-- 纯静态 vs LLM rerank 的对照收益
-- 单任务耗时是否可接受
-
----
-
-## 7. 输入输出约定
-
-### 7.1 ReconRequest
-
-保留最小必要字段：
+示例：
 
 ```json
 {
@@ -175,9 +148,9 @@
 }
 ```
 
-### 7.2 FileCard
+### FileCard
 
-`FileCard` 是候选文件的中间表示，只保留真正影响排序和上下文构建的信息：
+`FileCard` 是候选文件的中间表示，主要用于排序和构建模型输入。重点信息包括：
 
 - `path`
 - `lang`
@@ -188,9 +161,9 @@
 - `heuristic_tags`
 - `scores`
 
-### 7.3 ContextPack
+### ContextPack
 
-RepoScout 对上游交付的最终结构：
+这是 RepoScout 交给上游 Agent 的最终产物，主要字段包括：
 
 - `main_chain`
 - `companion_files`
@@ -199,104 +172,62 @@ RepoScout 对上游交付的最终结构：
 - `risk_hints`
 - `summary_markdown`
 
----
+## LLM 在这里到底起什么作用
 
-## 8. LLM 在 MVP 中负责什么
+当前 LLM 的职责是分析候选文件，而不是控制搜索流程。
 
-当前 LLM 的职责是：
+它更像一个“候选裁判”：
 
-- 对候选文件做轻量分析
-- 参与重排
-- 帮助把更有价值的文件提到 `main_chain` / `companion_files`
+- 判断文件更像主链路还是配套文件
+- 参与 rerank
+- 帮助把更值得看的文件往前提
 
-当前推荐的 LLM 分析任务：
+当前推荐继续强化的分析任务：
 
 1. `classify_file_role`
 2. `judge_relevance`
 3. `is_implicit_dependency`
 
-当前不再作为主方向的任务：
+已经不再作为核心方向推进的任务：
 
 1. `should_expand`
 
-输入原则：
+## 上下文构建原则
 
-- 不直接把整仓塞给模型
-- 以 `TaskCard` 为基本输入单元
-- 尽量使用压缩后的文件概要和相关代码片段
+RepoScout 不追求把整份源码粗暴塞进模型。
 
----
+当前策略是：
 
-## 9. 运行配置
+1. 先保留任务和文件元数据
+2. 再补文件概要，比如 `package`、`imports`、声明摘要
+3. 最后把剩余 token 预算尽量填给相关代码片段
 
-统一运行配置保留为两组：
+对应配置主要在 `runtime`：
 
-### 9.1 provider
+- `max_concurrency`
+- `request_timeout_sec`
+- `max_input_tokens`
+- `max_candidates`
+- `max_output_files`
+- `enable_model_rerank`
 
-- `provider.base_url`
-- `provider.api_key`
-- `provider.model`
-- `provider.api_style`
+`provider` 部分则负责对接具体模型后端：
 
-### 9.2 runtime
+- `base_url`
+- `api_key`
+- `model`
+- `api_style`
 
-- `runtime.max_concurrency`
-- `runtime.request_timeout_sec`
-- `runtime.max_input_tokens`
-- `runtime.max_candidates`
-- `runtime.max_output_files`
-- `runtime.enable_model_rerank`
+## 现在最值得做的事
 
-说明：
-
-- `runtime.max_input_tokens` 用于限制单次 LLM 输入预算
-- 构建 prompt 时应优先保留任务和文件元数据
-- 剩余预算尽量填给 imports、声明摘要和相关代码片段
-
-示例：
-
-```json
-{
-  "provider": {
-    "api_style": "openai",
-    "base_url": "http://127.0.0.1:8080/openai/v1",
-    "api_key": "",
-    "model": "rwkv7-g1e-7.2b-20260301-ctx8192"
-  },
-  "runtime": {
-    "max_concurrency": 16,
-    "request_timeout_sec": 60,
-    "max_input_tokens": 4096,
-    "max_candidates": 200,
-    "max_output_files": 20,
-    "enable_model_rerank": true
-  }
-}
-```
-
----
-
-## 10. 当前推荐推进顺序
-
-后续开发优先级应收口为：
+如果继续往下做，优先级建议还是这几个：
 
 1. 继续增强静态扩展搜索
-2. 继续增强 LLM 上下文构建
-3. 验证 `classify_file_role` rerank 在真实仓库上的收益
-4. 视收益决定是否接 `judge_relevance`
-5. 再考虑 `is_implicit_dependency`
-6. 最后补 MCP
+2. 继续增强 LLM 上下文构建质量
+3. 在更大的真实仓库上做纯静态 vs LLM rerank 对照
+4. 再决定是否继续扩展更多分析型任务
+5. 最后补 MCP
 
-不建议的顺序：
+## 一句话总结
 
-- 重新把产品方向拉回 LLM 驱动搜索
-- 在没有评测收益前继续堆更多模型任务
-- 在没有把静态扩展做强前，把问题都推给 LLM
-
----
-
-## 11. 一句话结论
-
-RepoScout 当前的正确方向是：
-
-**增强静态文件扩展搜索，增强候选文件的 LLM 分析质量，把结果稳定整理成给上游编程 Agent 使用的 `ContextPack`。**
+RepoScout 不是一个替上游 Agent 思考的系统，而是一个先帮它把仓库读图整理好的工具。
