@@ -53,10 +53,9 @@ Runs reposcout on multiple test cases and reports metrics like recall and precis
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Start MCP server",
-	Long:  `Start the Model Context Protocol server for reposcout.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Starting MCP server...")
-		// TODO: Implement actual MCP server logic
+	Long:  `MCP support is not implemented in the current static MVP build.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return fmt.Errorf("mcp is not implemented in the current static MVP build")
 	},
 }
 

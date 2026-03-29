@@ -14,8 +14,8 @@ RepoScout 是一个给编程 Agent 使用的仓库侦察工具。
 ## 当前定位
 
 - 产品定位：repo recon + context pack builder
-- 接入形态：CLI 工具或 MCP 服务
-- 模型策略：后端接口可替换，默认按 OpenAI 兼容 `v1/chat/completions` 对接
+- 接入形态：CLI 工具
+- 模型策略：默认静态侦察，可选接 OpenAI 兼容 `v1/chat/completions` 做 rerank
 - 优化方向：RWKV-first
 - 关键卖点：单机部署、高并发、小任务批量判断
 
@@ -28,4 +28,4 @@ RepoScout 是一个给编程 Agent 使用的仓库侦察工具。
 
 ## 一句话理解
 
-RepoScout 先用静态分析缩小候选范围，再用高并发小模型任务做轻量判断，最后输出给编程 Agent 使用的上下文小抄。
+RepoScout 先用静态分析缩小候选范围，再可选地用高并发小模型任务做轻量重排，最后输出给编程 Agent 使用的上下文小抄。

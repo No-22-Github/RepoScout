@@ -29,9 +29,10 @@ func TestParseReconRequest(t *testing.T) {
 				"focus_symbols": ["LoginHandler", "AuthMiddleware"],
 				"focus_checks": ["security", "error-handling"],
 				"budget": {
-					"max_files": 100,
-					"max_tokens": 50000,
-					"max_time_sec": 120
+					"max_seed_neighbors": 40,
+					"expand_depth": 2,
+					"max_output_files": 20,
+					"max_llm_jobs": 64
 				}
 			}`,
 			wantErr: false,
@@ -61,34 +62,34 @@ func TestParseReconRequest(t *testing.T) {
 			errMsg:  "failed to parse recon request",
 		},
 		{
-			name: "negative budget max_files",
+			name: "negative budget max_seed_neighbors",
 			json: `{
 				"task": "Add authentication",
 				"repo_root": "/home/user/project",
-				"budget": {"max_files": -1}
+				"budget": {"max_seed_neighbors": -1}
 			}`,
 			wantErr: true,
-			errMsg:  "budget.max_files cannot be negative",
+			errMsg:  "budget.max_seed_neighbors cannot be negative",
 		},
 		{
-			name: "negative budget max_tokens",
+			name: "negative budget expand_depth",
 			json: `{
 				"task": "Add authentication",
 				"repo_root": "/home/user/project",
-				"budget": {"max_tokens": -100}
+				"budget": {"expand_depth": -1}
 			}`,
 			wantErr: true,
-			errMsg:  "budget.max_tokens cannot be negative",
+			errMsg:  "budget.expand_depth cannot be negative",
 		},
 		{
-			name: "negative budget max_time_sec",
+			name: "negative budget max_output_files",
 			json: `{
 				"task": "Add authentication",
 				"repo_root": "/home/user/project",
-				"budget": {"max_time_sec": -30}
+				"budget": {"max_output_files": -30}
 			}`,
 			wantErr: true,
-			errMsg:  "budget.max_time_sec cannot be negative",
+			errMsg:  "budget.max_output_files cannot be negative",
 		},
 	}
 
@@ -153,9 +154,10 @@ func TestReconRequest_Validate(t *testing.T) {
 				Task:     "Add feature",
 				RepoRoot: "/home/user/project",
 				Budget: &Budget{
-					MaxFiles:   100,
-					MaxTokens:  50000,
-					MaxTimeSec: 120,
+					MaxSeedNeighbors: 100,
+					ExpandDepth:      2,
+					MaxOutputFiles:   20,
+					MaxLLMJobs:       32,
 				},
 			},
 			wantErr: false,
@@ -188,7 +190,7 @@ func TestReconRequest_ToJSON(t *testing.T) {
 		RepoRoot:  "/home/user/project",
 		Profile:   "feature-add",
 		SeedFiles: []string{"main.go"},
-		Budget:    &Budget{MaxFiles: 50},
+		Budget:    &Budget{MaxOutputFiles: 50},
 	}
 
 	data, err := req.ToJSON()
@@ -216,8 +218,8 @@ func TestReconRequest_ToJSON(t *testing.T) {
 	if len(parsed.SeedFiles) != len(req.SeedFiles) {
 		t.Errorf("SeedFiles length mismatch: got %v, want %v", len(parsed.SeedFiles), len(req.SeedFiles))
 	}
-	if parsed.Budget == nil || parsed.Budget.MaxFiles != req.Budget.MaxFiles {
-		t.Errorf("Budget.MaxFiles mismatch")
+	if parsed.Budget == nil || parsed.Budget.MaxOutputFiles != req.Budget.MaxOutputFiles {
+		t.Errorf("Budget.MaxOutputFiles mismatch")
 	}
 }
 

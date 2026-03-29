@@ -85,6 +85,9 @@ type BuildOptions struct {
 	// SeedFiles are the seed files that should be marked as seeds.
 	SeedFiles []string
 
+	// FocusSymbols are the symbols that should be treated as strong hints.
+	FocusSymbols []string
+
 	// DiscoverySources maps file paths to their discovery sources.
 	// This is populated by neighbor expansion.
 	DiscoverySources map[string][]ExpansionSource
@@ -135,12 +138,48 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 		card.Scores.HeuristicScore = combinedScore
 	}
 
-	// 8. Set seed weight for seed files
+	// 8. Boost cards that match user-provided focus symbols.
+	b.applyFocusSymbols(card, filePath, opts)
+
+	// 9. Set seed weight for seed files
 	if b.isSeedFile(filePath, opts) {
 		card.Scores.SeedWeight = 1.0
 	}
 
 	return card
+}
+
+// applyFocusSymbols boosts cards that match user-specified symbols or filenames.
+func (b *FileCardBuilder) applyFocusSymbols(card *schema.FileCard, filePath string, opts *BuildOptions) {
+	if opts == nil || len(opts.FocusSymbols) == 0 {
+		return
+	}
+
+	lowerPath := strings.ToLower(filePath)
+	for _, focus := range opts.FocusSymbols {
+		if focus == "" {
+			continue
+		}
+
+		lowerFocus := strings.ToLower(focus)
+		if strings.Contains(lowerPath, lowerFocus) {
+			card.AddDiscoveredBy("symbol_hit")
+			card.Scores.HeuristicScore += 0.2
+			break
+		}
+
+		for _, symbol := range card.Symbols {
+			if strings.EqualFold(symbol, focus) || strings.Contains(strings.ToLower(symbol), lowerFocus) {
+				card.AddDiscoveredBy("symbol_hit")
+				card.Scores.HeuristicScore += 0.2
+				break
+			}
+		}
+
+		if card.Scores.HeuristicScore > 1.0 {
+			card.Scores.HeuristicScore = 1.0
+		}
+	}
 }
 
 // BuildAll creates FileCards for all candidate files.
@@ -228,6 +267,7 @@ func BuildFileCards(input *FileCardBuilderInput) []*schema.FileCard {
 		Profile:          input.Profile,
 		FocusChecks:      input.FocusChecks,
 		SeedFiles:        input.SeedFiles,
+		FocusSymbols:     nil,
 		DiscoverySources: input.DiscoverySources,
 	})
 }
@@ -239,6 +279,7 @@ func BuildFileCardsWithConfig(input *FileCardBuilderInput, config *FileCardBuild
 		Profile:          input.Profile,
 		FocusChecks:      input.FocusChecks,
 		SeedFiles:        input.SeedFiles,
+		FocusSymbols:     nil,
 		DiscoverySources: input.DiscoverySources,
 	})
 }

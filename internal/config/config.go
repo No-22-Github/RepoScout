@@ -30,7 +30,7 @@ type RuntimeConfig struct {
 	MaxCandidates int `json:"max_candidates"`
 	// MaxOutputFiles limits the number of files in output.
 	MaxOutputFiles int `json:"max_output_files"`
-	// EnableModelRerank enables model-based reranking.
+	// EnableModelRerank enables model-based reranking on the static candidate set.
 	EnableModelRerank bool `json:"enable_model_rerank"`
 }
 
@@ -54,7 +54,7 @@ func DefaultConfig() *Config {
 			RequestTimeoutSec: 30,
 			MaxCandidates:     100,
 			MaxOutputFiles:    50,
-			EnableModelRerank: true,
+			EnableModelRerank: false,
 		},
 	}
 }
@@ -131,9 +131,6 @@ func Load(path string) (*Config, error) {
 
 // Validate checks if the configuration is valid.
 func (c *Config) Validate() error {
-	if c.Provider.BaseURL == "" {
-		return fmt.Errorf("provider.base_url is required")
-	}
 	if c.Runtime.MaxConcurrency <= 0 {
 		return fmt.Errorf("runtime.max_concurrency must be positive")
 	}

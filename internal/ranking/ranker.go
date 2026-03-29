@@ -26,6 +26,10 @@ type RankerConfig struct {
 	// Range: 0.0 to 1.0. Default: 0.3
 	ProfileWeight float64
 
+	// LLMWeight is the weight for model-enhanced relevance contribution.
+	// Range: 0.0 to 1.0. Default: 0.3
+	LLMWeight float64
+
 	// MaxFinalScore is the maximum allowed final score.
 	// Default: 1.0
 	MaxFinalScore float64
@@ -38,6 +42,7 @@ func DefaultRankerConfig() *RankerConfig {
 		SameModuleWeight: 0.2,
 		HeuristicWeight:  0.4,
 		ProfileWeight:    0.3,
+		LLMWeight:        0.3,
 		MaxFinalScore:    1.0,
 	}
 }
@@ -86,12 +91,14 @@ type FileScoreBreakdown struct {
 	ModuleWeight   float64 `json:"module_weight"`
 	HeuristicScore float64 `json:"heuristic_score"`
 	ProfileScore   float64 `json:"profile_score"`
+	LLMScore       float64 `json:"llm_score"`
 
 	// Weighted contributions
 	SeedContribution      float64 `json:"seed_contribution"`
 	ModuleContribution    float64 `json:"module_contribution"`
 	HeuristicContribution float64 `json:"heuristic_contribution"`
 	ProfileContribution   float64 `json:"profile_contribution"`
+	LLMContribution       float64 `json:"llm_contribution"`
 
 	// Final result
 	FinalScore float64 `json:"final_score"`
@@ -210,6 +217,7 @@ func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreak
 			ModuleWeight:   card.Scores.ModuleWeight,
 			HeuristicScore: card.Scores.HeuristicScore,
 			ProfileScore:   card.Scores.ProfileScore,
+			LLMScore:       calculateLLMScore(card),
 		}
 
 		// Compute weighted contributions
@@ -217,10 +225,11 @@ func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreak
 		bd.ModuleContribution = bd.ModuleWeight * r.config.SameModuleWeight
 		bd.HeuristicContribution = bd.HeuristicScore * r.config.HeuristicWeight
 		bd.ProfileContribution = bd.ProfileScore * r.config.ProfileWeight
+		bd.LLMContribution = bd.LLMScore * r.config.LLMWeight
 
 		// Sum all contributions
 		finalScore := bd.SeedContribution + bd.ModuleContribution +
-			bd.HeuristicContribution + bd.ProfileContribution
+			bd.HeuristicContribution + bd.ProfileContribution + bd.LLMContribution
 
 		// Cap at max
 		if finalScore > r.config.MaxFinalScore {
@@ -234,6 +243,26 @@ func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreak
 	}
 
 	return breakdown
+}
+
+func calculateLLMScore(card *schema.FileCard) float64 {
+	if card == nil || card.Scores == nil || card.Scores.LLMConfidence <= 0 {
+		return 0.0
+	}
+
+	var labelScore float64
+	switch card.Scores.LLMLabel {
+	case "main_chain":
+		labelScore = 1.0
+	case "companion":
+		labelScore = 0.7
+	case "uncertain":
+		labelScore = 0.4
+	default:
+		labelScore = 0.0
+	}
+
+	return labelScore * card.Scores.LLMConfidence
 }
 
 // isSubModule returns true if child is a sub-module of parent.

@@ -2,12 +2,14 @@
 package runner
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/no22/repo-scout/internal/config"
+	"github.com/no22/repo-scout/internal/llm"
 	"github.com/no22/repo-scout/internal/schema"
 )
 
@@ -255,6 +257,63 @@ func TestRunner_EmptyRepo(t *testing.T) {
 	// Empty repo should produce empty results
 	if len(pack.MainChain) > 0 || len(pack.CompanionFiles) > 0 {
 		t.Error("Expected empty results for empty repo")
+	}
+}
+
+func TestRunner_LLMRerank(t *testing.T) {
+	repoRoot := createTestRepo(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Runtime.EnableModelRerank = true
+	cfg.Runtime.MaxConcurrency = 2
+
+	r := NewRunner(cfg)
+	mockAdapter := llm.NewMockAdapter()
+	mockAdapter.ExecuteFunc = func(ctx context.Context, card *llm.TaskCard) (*llm.TaskResult, error) {
+		switch card.FilePath {
+		case "internal/auth/handler.go":
+			return &llm.TaskResult{
+				Type:           llm.TaskClassifyFileRole,
+				Classification: "main_chain",
+				Confidence:     1.0,
+			}, nil
+		default:
+			return &llm.TaskResult{
+				Type:           llm.TaskClassifyFileRole,
+				Classification: "irrelevant",
+				Confidence:     1.0,
+			}, nil
+		}
+	}
+	r.adapter = mockAdapter
+
+	req := &schema.ReconRequest{
+		Task:      "Add authentication",
+		RepoRoot:  repoRoot,
+		SeedFiles: []string{"internal/auth/middleware.go"},
+		Budget: &schema.Budget{
+			MaxLLMJobs: 4,
+		},
+	}
+
+	pack, err := r.Run(req)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	if !pack.Stats.ModelEnhanced {
+		t.Fatal("expected model_enhanced to be true")
+	}
+
+	found := false
+	for _, path := range pack.MainChain {
+		if path == "internal/auth/handler.go" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected LLM rerank to promote internal/auth/handler.go, got main_chain=%v", pack.MainChain)
 	}
 }
 

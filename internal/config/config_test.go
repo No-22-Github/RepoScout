@@ -134,12 +134,12 @@ func TestValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty base_url",
+			name: "empty base_url is allowed in static mode",
 			cfg: &Config{
 				Provider: ProviderConfig{BaseURL: ""},
 				Runtime:  RuntimeConfig{MaxConcurrency: 4, RequestTimeoutSec: 30, MaxCandidates: 100, MaxOutputFiles: 50},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "zero max_concurrency",

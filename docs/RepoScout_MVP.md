@@ -1,5 +1,10 @@
 # RepoScout MVP 文档
 
+> 实现状态说明（2026-03-29）：
+> 当前仓库代码已稳定实现 **Phase 1 静态 MVP**，并接通了 **Phase 2 的首个可选能力**：
+> 对静态候选集执行 `classify_file_role` 型 LLM rerank。
+> 目前仍未实现 MCP 服务，也未接通 `judge_relevance` / `should_expand` / `is_implicit_dependency`。
+
 ## 1. 文档目标
 
 本文档用于定义 `RepoScout` 的首个可落地版本（MVP）。
@@ -25,7 +30,7 @@
 
 ## 2. MVP 的一句话定义
 
-输入一个任务描述和少量 seed 文件，`RepoScout` 先用静态分析收缩候选范围，再用批量 LLM Worker 对候选文件做角色判断和扩展判断，最后输出一个带阅读顺序、主链路、配套文件和风险提示的 `ContextPack`。
+输入一个任务描述和少量 seed 文件，`RepoScout` 先用静态分析收缩候选范围，再可选地用批量 LLM Worker 对候选文件做轻量角色判断和重排，最后输出一个带阅读顺序、主链路、配套文件和风险提示的 `ContextPack`。
 
 ---
 
@@ -153,7 +158,7 @@ MVP 只支持少数高价值检查项：
 
 ## 8. MVP 核心思路
 
-系统采用“两段式”：
+路线采用“两阶段”：
 
 ### 第一段：静态分析收缩范围
 
@@ -170,7 +175,7 @@ MVP 只支持少数高价值检查项：
 
 这一段尽量不用模型，优先靠确定性逻辑完成。
 
-### 第二段：LLM 并发轻判断
+### 第二段：LLM 并发轻判断（Phase 2，当前仓库已部分接通）
 
 这一段默认优先为 RWKV 优化，但工程接口不绑定 RWKV 专有实现。
 
@@ -187,6 +192,8 @@ MVP 只支持少数高价值检查项：
 
 ## 9. MVP 系统架构
 
+当前仓库已实现的主链路：
+
 ```text
 User Task / Agent
    ->
@@ -194,9 +201,7 @@ ReconRequest Builder
    ->
 Static Scout
    ->
-Candidate File Set
-   ->
-LLM Worker Pool
+Optional LLM Worker Pool (classify_file_role rerank only)
    ->
 Ranker + ContextPack Builder
    ->
@@ -213,7 +218,7 @@ ContextPack(JSON + Markdown Summary)
 
 负责静态收缩候选集和生成 `FileCard`。
 
-#### C. LLM Worker Pool
+#### C. LLM Worker Pool（Phase 2，当前已接 `classify_file_role`）
 
 负责并发执行小任务分类。
 
@@ -461,13 +466,13 @@ final_score =
 
 ## 14. MVP 交付形态
 
-MVP 建议提供两种接入形态：
+当前实现只承诺 CLI 形态；MCP 保留到后续阶段。
 
 ### 14.1 CLI 工具
 
 适合本地命令行调用、脚本集成和比赛演示。
 
-### 14.2 MCP 服务
+### 14.2 MCP 服务（后续阶段）
 
 适合接入 Codex、Claude Code、Cursor 一类编程 Agent 客户端，让它作为外部仓库侦察工具被调用。
 
@@ -512,15 +517,18 @@ reposcout_recon(recon_request, runtime_config?)
 
 ### 15.1 必备配置项
 
-- `provider.base_url`
-- `provider.api_key`
-- `provider.model`
-- `provider.api_style`
 - `runtime.max_concurrency`
 - `runtime.request_timeout_sec`
 - `runtime.max_candidates`
 - `runtime.max_output_files`
-- `runtime.enable_model_rerank`
+- `runtime.enable_model_rerank`（当前实现用于开启 `classify_file_role` 型 rerank，默认关闭）
+
+以下 provider 配置在当前实现中仅在开启 rerank 时使用：
+
+- `provider.base_url`
+- `provider.api_key`
+- `provider.model`
+- `provider.api_style`
 
 ### 15.2 推荐配置结构
 

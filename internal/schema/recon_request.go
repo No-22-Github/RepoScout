@@ -37,12 +37,16 @@ type ReconRequest struct {
 
 // Budget constrains the scope of reconnaissance.
 type Budget struct {
-	// MaxFiles limits the number of files to analyze.
-	MaxFiles int `json:"max_files,omitempty"`
-	// MaxTokens limits the total token count for model-based analysis.
-	MaxTokens int `json:"max_tokens,omitempty"`
-	// MaxTimeSec limits the total analysis time in seconds.
-	MaxTimeSec int `json:"max_time_sec,omitempty"`
+	// MaxSeedNeighbors limits how many non-seed candidates can be collected
+	// during static expansion.
+	MaxSeedNeighbors int `json:"max_seed_neighbors,omitempty"`
+	// ExpandDepth controls how many rounds of neighbor expansion to run.
+	// Static MVP supports shallow expansion only, usually 1-2.
+	ExpandDepth int `json:"expand_depth,omitempty"`
+	// MaxOutputFiles limits the total number of files emitted in ContextPack.
+	MaxOutputFiles int `json:"max_output_files,omitempty"`
+	// MaxLLMJobs is reserved for future model-enhanced stages.
+	MaxLLMJobs int `json:"max_llm_jobs,omitempty"`
 }
 
 // ParseReconRequest parses a JSON byte slice into a ReconRequest.
@@ -66,17 +70,55 @@ func (r *ReconRequest) Validate() error {
 		return fmt.Errorf("recon request: repo_root is required")
 	}
 	if r.Budget != nil {
-		if r.Budget.MaxFiles < 0 {
-			return fmt.Errorf("recon request: budget.max_files cannot be negative")
+		if r.Budget.MaxSeedNeighbors < 0 {
+			return fmt.Errorf("recon request: budget.max_seed_neighbors cannot be negative")
 		}
-		if r.Budget.MaxTokens < 0 {
-			return fmt.Errorf("recon request: budget.max_tokens cannot be negative")
+		if r.Budget.ExpandDepth < 0 {
+			return fmt.Errorf("recon request: budget.expand_depth cannot be negative")
 		}
-		if r.Budget.MaxTimeSec < 0 {
-			return fmt.Errorf("recon request: budget.max_time_sec cannot be negative")
+		if r.Budget.MaxOutputFiles < 0 {
+			return fmt.Errorf("recon request: budget.max_output_files cannot be negative")
+		}
+		if r.Budget.MaxLLMJobs < 0 {
+			return fmt.Errorf("recon request: budget.max_llm_jobs cannot be negative")
 		}
 	}
 	return nil
+}
+
+// EffectiveExpandDepth returns the requested expansion depth with a static-MVP default.
+func (r *ReconRequest) EffectiveExpandDepth() int {
+	if r == nil || r.Budget == nil || r.Budget.ExpandDepth <= 0 {
+		return 1
+	}
+	return r.Budget.ExpandDepth
+}
+
+// EffectiveMaxSeedNeighbors returns the configured neighbor budget.
+func (r *ReconRequest) EffectiveMaxSeedNeighbors() int {
+	if r == nil || r.Budget == nil {
+		return 0
+	}
+	return r.Budget.MaxSeedNeighbors
+}
+
+// EffectiveMaxOutputFiles returns the configured output budget.
+func (r *ReconRequest) EffectiveMaxOutputFiles() int {
+	if r == nil || r.Budget == nil {
+		return 0
+	}
+	return r.Budget.MaxOutputFiles
+}
+
+// EffectiveMaxLLMJobs returns the configured cap for model inference jobs.
+func (r *ReconRequest) EffectiveMaxLLMJobs() int {
+	if r == nil || r.Budget == nil {
+		return 0
+	}
+	if r.Budget.MaxLLMJobs > 0 {
+		return r.Budget.MaxLLMJobs
+	}
+	return 0
 }
 
 // ToJSON returns the ReconRequest as formatted JSON.

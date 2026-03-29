@@ -70,8 +70,10 @@ The standard ReconRequest input for RepoScout.
   "focus_symbols": ["SettingsPage", "TogglePreference"],
   "focus_checks": ["ui", "preferences"],
   "budget": {
-    "max_files": 50,
-    "max_time_sec": 60
+    "max_seed_neighbors": 50,
+    "expand_depth": 1,
+    "max_output_files": 20,
+    "max_llm_jobs": 16
   }
 }
 ```

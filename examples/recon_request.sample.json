@@ -1,22 +1,25 @@
 {
-  "task": "Add a new REST API endpoint for user authentication",
-  "repo_root": "/path/to/repository",
-  "profile": "feature-add",
+  "task": "Understand how RepoScout builds context packs and ranks candidate files",
+  "repo_root": "/home/no22/RepoScout",
+  "profile": "browser_settings",
   "seed_files": [
-    "cmd/server/main.go",
-    "internal/auth/handler.go"
+    "internal/runner/runner.go",
+    "internal/pack/builder.go"
   ],
   "focus_symbols": [
-    "LoginHandler",
-    "AuthMiddleware"
+    "Run",
+    "Build",
+    "ContextPack"
   ],
   "focus_checks": [
-    "security",
-    "error-handling"
+    "tests",
+    "default_config",
+    "build_registration"
   ],
   "budget": {
-    "max_files": 100,
-    "max_tokens": 50000,
-    "max_time_sec": 120
+    "max_seed_neighbors": 40,
+    "expand_depth": 2,
+    "max_output_files": 20,
+    "max_llm_jobs": 16
   }
 }

@@ -97,10 +97,15 @@ func NewContextPack(task string) *ContextPack {
 // AddMainChain adds files to the main chain.
 func (cp *ContextPack) AddMainChain(paths ...string) {
 	for _, p := range paths {
+		duplicate := false
 		for _, existing := range cp.MainChain {
 			if existing == p {
-				return
+				duplicate = true
+				break
 			}
+		}
+		if duplicate {
+			continue
 		}
 		cp.MainChain = append(cp.MainChain, p)
 	}
@@ -109,10 +114,15 @@ func (cp *ContextPack) AddMainChain(paths ...string) {
 // AddCompanion adds files to the companion list.
 func (cp *ContextPack) AddCompanion(paths ...string) {
 	for _, p := range paths {
+		duplicate := false
 		for _, existing := range cp.CompanionFiles {
 			if existing == p {
-				return
+				duplicate = true
+				break
 			}
+		}
+		if duplicate {
+			continue
 		}
 		cp.CompanionFiles = append(cp.CompanionFiles, p)
 	}
@@ -121,10 +131,15 @@ func (cp *ContextPack) AddCompanion(paths ...string) {
 // AddUncertain adds files to the uncertain list.
 func (cp *ContextPack) AddUncertain(paths ...string) {
 	for _, p := range paths {
+		duplicate := false
 		for _, existing := range cp.UncertainNodes {
 			if existing == p {
-				return
+				duplicate = true
+				break
 			}
+		}
+		if duplicate {
+			continue
 		}
 		cp.UncertainNodes = append(cp.UncertainNodes, p)
 	}

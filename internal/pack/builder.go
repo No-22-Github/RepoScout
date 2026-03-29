@@ -37,6 +37,10 @@ type BuilderConfig struct {
 	// MaxUncertain limits the number of uncertain files.
 	// 0 means no limit. Default: 10
 	MaxUncertain int
+
+	// MaxTotalFiles limits the total number of emitted files across all buckets.
+	// 0 means no limit.
+	MaxTotalFiles int
 }
 
 // DefaultBuilderConfig returns the default configuration.
@@ -78,6 +82,9 @@ type BuildInput struct {
 
 	// Request is the original ReconRequest (optional, for additional context).
 	Request *schema.ReconRequest
+
+	// ModelEnhanced indicates whether LLM-based reranking was applied.
+	ModelEnhanced bool
 }
 
 // Build creates a ContextPack from ranked file candidates.
@@ -92,18 +99,24 @@ func (b *Builder) Build(input *BuildInput) *schema.ContextPack {
 		return pack
 	}
 
-	// Classify files into main_chain, companion_files, uncertain_nodes
+	// Classify files into main_chain, companion_files, uncertain_nodes.
 	b.classifyFiles(pack, input.RankResult.Cards)
 
+	// Apply total output limit before generating derived fields.
+	b.trimToTotalLimit(pack)
+
 	// Generate reading order
-	b.generateReadingOrder(pack)
+	b.generateReadingOrder(pack, input.Request)
 
 	// Generate risk hints based on file analysis
 	b.generateRiskHints(pack, input.RankResult.Cards)
 
+	// Generate a Markdown summary embedded in the JSON payload.
+	pack.SummaryMarkdown = b.generateSummaryMarkdown(pack)
+
 	// Update stats
 	pack.Stats.AnalysisTimeMs = time.Since(startTime).Milliseconds()
-	pack.Stats.ModelEnhanced = false // This is the no-model version
+	pack.Stats.ModelEnhanced = input.ModelEnhanced
 	pack.UpdateStats()
 
 	return pack
@@ -165,7 +178,7 @@ func (b *Builder) limitCards(cards []*schema.FileCard, max int) []*schema.FileCa
 // 1. Seed files first (already known to be relevant)
 // 2. Main chain files by score
 // 3. Companion files by score
-func (b *Builder) generateReadingOrder(pack *schema.ContextPack) {
+func (b *Builder) generateReadingOrder(pack *schema.ContextPack, req *schema.ReconRequest) {
 	var order []string
 	seen := make(map[string]bool)
 
@@ -177,22 +190,95 @@ func (b *Builder) generateReadingOrder(pack *schema.ContextPack) {
 		}
 	}
 
-	// First: seed files in main chain
-	for _, path := range pack.MainChain {
-		addToOrder(path)
+	isSeed := make(map[string]bool)
+	if req != nil {
+		for _, path := range req.SeedFiles {
+			isSeed[path] = true
+		}
 	}
 
-	// Then: companion files
-	for _, path := range pack.CompanionFiles {
-		addToOrder(path)
+	addSeedFirst := func(paths []string) {
+		for _, path := range paths {
+			if isSeed[path] {
+				addToOrder(path)
+			}
+		}
+		for _, path := range paths {
+			if !isSeed[path] {
+				addToOrder(path)
+			}
+		}
 	}
 
-	// Finally: uncertain nodes
-	for _, path := range pack.UncertainNodes {
-		addToOrder(path)
-	}
+	// First: seed files from the main chain, then the rest of the main chain.
+	addSeedFirst(pack.MainChain)
+
+	// Then: seed files from companions, then the rest.
+	addSeedFirst(pack.CompanionFiles)
+
+	// Finally: uncertain nodes.
+	addSeedFirst(pack.UncertainNodes)
 
 	pack.SetReadingOrder(order)
+}
+
+// trimToTotalLimit applies the total output limit while preserving priority
+// order: main_chain > companion_files > uncertain_nodes.
+func (b *Builder) trimToTotalLimit(pack *schema.ContextPack) {
+	maxTotal := b.config.MaxTotalFiles
+	if maxTotal <= 0 {
+		return
+	}
+
+	remaining := maxTotal
+	trim := func(paths []string) []string {
+		if remaining <= 0 {
+			return []string{}
+		}
+		if len(paths) <= remaining {
+			remaining -= len(paths)
+			return paths
+		}
+		result := paths[:remaining]
+		remaining = 0
+		return result
+	}
+
+	pack.MainChain = trim(pack.MainChain)
+	pack.CompanionFiles = trim(pack.CompanionFiles)
+	pack.UncertainNodes = trim(pack.UncertainNodes)
+}
+
+func (b *Builder) generateSummaryMarkdown(pack *schema.ContextPack) string {
+	var sb strings.Builder
+
+	sb.WriteString("# RepoScout Summary\n\n")
+	sb.WriteString("## Task\n\n")
+	sb.WriteString(pack.Task)
+	sb.WriteString("\n\n")
+
+	if len(pack.ReadingOrder) > 0 {
+		sb.WriteString("## Recommended First Reads\n\n")
+		limit := len(pack.ReadingOrder)
+		if limit > 5 {
+			limit = 5
+		}
+		for i := 0; i < limit; i++ {
+			sb.WriteString(strings.Join([]string{"- `", pack.ReadingOrder[i], "`\n"}, ""))
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(pack.RiskHints) > 0 {
+		sb.WriteString("## Risk Hints\n\n")
+		for _, hint := range pack.RiskHints {
+			sb.WriteString("- ")
+			sb.WriteString(hint.Message)
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
 }
 
 // generateRiskHints creates risk hints based on file analysis.

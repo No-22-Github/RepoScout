@@ -21,6 +21,9 @@ func TestDefaultRankerConfig(t *testing.T) {
 	if config.ProfileWeight <= 0 || config.ProfileWeight > 1 {
 		t.Errorf("ProfileWeight should be in (0, 1], got %f", config.ProfileWeight)
 	}
+	if config.LLMWeight <= 0 || config.LLMWeight > 1 {
+		t.Errorf("LLMWeight should be in (0, 1], got %f", config.LLMWeight)
+	}
 	if config.MaxFinalScore != 1.0 {
 		t.Errorf("MaxFinalScore should be 1.0, got %f", config.MaxFinalScore)
 	}
@@ -43,6 +46,7 @@ func TestNewRanker(t *testing.T) {
 			SameModuleWeight: 0.3,
 			HeuristicWeight:  0.2,
 			ProfileWeight:    0.1,
+			LLMWeight:        0.15,
 			MaxFinalScore:    0.9,
 		}
 		ranker := NewRanker(config)
@@ -203,6 +207,8 @@ func TestFinalScoreComputation(t *testing.T) {
 		card.Scores.ModuleWeight = 1.0
 		card.Scores.HeuristicScore = 0.5
 		card.Scores.ProfileScore = 0.8
+		card.Scores.LLMLabel = "main_chain"
+		card.Scores.LLMConfidence = 0.5
 		card.AddDiscoveredBy("seed")
 		card.Module = "browser/settings"
 
@@ -211,6 +217,7 @@ func TestFinalScoreComputation(t *testing.T) {
 			SameModuleWeight: 0.2,
 			HeuristicWeight:  0.4,
 			ProfileWeight:    0.3,
+			LLMWeight:        0.2,
 			MaxFinalScore:    1.0,
 		}
 
@@ -244,8 +251,13 @@ func TestFinalScoreComputation(t *testing.T) {
 			t.Errorf("profile contribution: expected %f, got %f", expectedProfileContrib, bd.ProfileContribution)
 		}
 
+		expectedLLMContrib := 0.5 * 0.2
+		if bd.LLMContribution != expectedLLMContrib {
+			t.Errorf("llm contribution: expected %f, got %f", expectedLLMContrib, bd.LLMContribution)
+		}
+
 		// Final score should be sum of contributions, capped at 1.0
-		expectedFinal := expectedSeedContrib + expectedModuleContrib + expectedHeuristicContrib + expectedProfileContrib
+		expectedFinal := expectedSeedContrib + expectedModuleContrib + expectedHeuristicContrib + expectedProfileContrib + expectedLLMContrib
 		if expectedFinal > 1.0 {
 			expectedFinal = 1.0
 		}
@@ -275,6 +287,22 @@ func TestFinalScoreComputation(t *testing.T) {
 
 		if card.Scores.FinalScore > 1.0 {
 			t.Errorf("final score should be capped at 1.0, got %f", card.Scores.FinalScore)
+		}
+	})
+
+	t.Run("llm can lift a card above static peers", func(t *testing.T) {
+		card1 := schema.NewFileCard("static.go")
+		card1.Scores.HeuristicScore = 0.7
+
+		card2 := schema.NewFileCard("llm.go")
+		card2.Scores.HeuristicScore = 0.4
+		card2.Scores.LLMLabel = "main_chain"
+		card2.Scores.LLMConfidence = 1.0
+
+		ranker := NewRanker(nil)
+		result := ranker.Rank(&RankInput{Cards: []*schema.FileCard{card1, card2}})
+		if result.Cards[0].Path != "llm.go" {
+			t.Errorf("expected llm-enhanced card to rank first, got %s", result.Cards[0].Path)
 		}
 	})
 }

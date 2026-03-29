@@ -2,6 +2,7 @@
 package heuristics
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -252,6 +253,41 @@ func TestFileCardBuilder_BuildWithDiscoverySources(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFileCardBuilder_BuildWithFocusSymbols(t *testing.T) {
+	tmpDir := t.TempDir()
+	builder := NewFileCardBuilder(nil)
+
+	sourceDir := filepath.Join(tmpDir, "browser", "settings")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create test source dir: %v", err)
+	}
+
+	filePath := filepath.Join(sourceDir, "foo_handler.go")
+	content := []byte("package settings\n\nfunc EnableFoo() {}\n")
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	card := builder.Build("browser/settings/foo_handler.go", &BuildOptions{
+		RepoRoot:     tmpDir,
+		FocusSymbols: []string{"EnableFoo"},
+	})
+
+	found := false
+	for _, src := range card.DiscoveredBy {
+		if src == "symbol_hit" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected symbol_hit discovery source, got %v", card.DiscoveredBy)
+	}
+	if card.Scores.HeuristicScore <= 0 {
+		t.Errorf("expected focus symbol to boost heuristic score, got %f", card.Scores.HeuristicScore)
 	}
 }
 

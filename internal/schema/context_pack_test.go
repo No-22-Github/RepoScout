@@ -50,6 +50,11 @@ func TestContextPack_AddMainChain(t *testing.T) {
 	if len(cp.MainChain) != 2 {
 		t.Errorf("MainChain = %v, should have 2 elements", cp.MainChain)
 	}
+
+	cp.AddMainChain("internal/auth/handler.go", "internal/auth/service.go")
+	if len(cp.MainChain) != 3 || cp.MainChain[2] != "internal/auth/service.go" {
+		t.Errorf("AddMainChain should continue after duplicate, got %v", cp.MainChain)
+	}
 }
 
 func TestContextPack_AddCompanion(t *testing.T) {
@@ -71,6 +76,11 @@ func TestContextPack_AddCompanion(t *testing.T) {
 	if len(cp.CompanionFiles) != 2 {
 		t.Errorf("CompanionFiles = %v, should have 2 elements", cp.CompanionFiles)
 	}
+
+	cp.AddCompanion("internal/auth/types.go", "internal/auth/helpers.go")
+	if len(cp.CompanionFiles) != 3 || cp.CompanionFiles[2] != "internal/auth/helpers.go" {
+		t.Errorf("AddCompanion should continue after duplicate, got %v", cp.CompanionFiles)
+	}
 }
 
 func TestContextPack_AddUncertain(t *testing.T) {
@@ -91,6 +101,11 @@ func TestContextPack_AddUncertain(t *testing.T) {
 	cp.AddUncertain("internal/utils/auth.go")
 	if len(cp.UncertainNodes) != 2 {
 		t.Errorf("UncertainNodes = %v, should have 2 elements", cp.UncertainNodes)
+	}
+
+	cp.AddUncertain("internal/legacy/auth.go", "internal/unknown/auth.go")
+	if len(cp.UncertainNodes) != 3 || cp.UncertainNodes[2] != "internal/unknown/auth.go" {
+		t.Errorf("AddUncertain should continue after duplicate, got %v", cp.UncertainNodes)
 	}
 }
 

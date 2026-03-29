@@ -16,7 +16,9 @@
     "error-handling"
   ],
   "budget": {
-    "max_files": 100,
-    "max_time_sec": 120
+    "max_seed_neighbors": 100,
+    "expand_depth": 1,
+    "max_output_files": 20,
+    "max_llm_jobs": 16
   }
 }

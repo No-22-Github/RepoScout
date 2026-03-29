@@ -186,6 +186,32 @@ func TestBuild_ReadingOrder(t *testing.T) {
 	}
 }
 
+func TestBuild_ReadingOrderSeedFirst(t *testing.T) {
+	b := NewBuilder(nil)
+
+	cards := []*schema.FileCard{
+		createCardWithScore("main.go", 0.8),
+		createCardWithScore("seed-companion.go", 0.4),
+		createCardWithScore("other-companion.go", 0.35),
+	}
+
+	result := &ranking.RankResult{Cards: cards}
+	pack := b.Build(&BuildInput{
+		Task:       "test",
+		RankResult: result,
+		Request: &schema.ReconRequest{
+			SeedFiles: []string{"seed-companion.go"},
+		},
+	})
+
+	if len(pack.ReadingOrder) < 2 {
+		t.Fatalf("expected reading order to contain at least 2 files, got %v", pack.ReadingOrder)
+	}
+	if pack.ReadingOrder[1] != "seed-companion.go" {
+		t.Errorf("expected seed companion to be read before other companions, got %v", pack.ReadingOrder)
+	}
+}
+
 func TestBuild_RiskHints(t *testing.T) {
 	b := NewBuilder(nil)
 
@@ -268,6 +294,54 @@ func TestBuild_Stats(t *testing.T) {
 	}
 	if pack.Stats.ModelEnhanced {
 		t.Error("expected ModelEnhanced to be false for no-model version")
+	}
+}
+
+func TestBuild_MaxTotalFiles(t *testing.T) {
+	b := NewBuilder(&BuilderConfig{
+		MainChainThreshold: 0.5,
+		CompanionThreshold: 0.3,
+		UncertainThreshold: 0.1,
+		MaxMainChain:       10,
+		MaxCompanion:       10,
+		MaxUncertain:       10,
+		MaxTotalFiles:      3,
+	})
+
+	cards := []*schema.FileCard{
+		createCardWithScore("main1.go", 0.9),
+		createCardWithScore("main2.go", 0.8),
+		createCardWithScore("comp1.go", 0.4),
+		createCardWithScore("unc1.go", 0.2),
+	}
+
+	result := &ranking.RankResult{Cards: cards}
+	pack := b.Build(&BuildInput{Task: "test", RankResult: result})
+
+	if len(pack.AllFiles()) != 3 {
+		t.Fatalf("expected total files to be capped at 3, got %d", len(pack.AllFiles()))
+	}
+	if len(pack.UncertainNodes) != 0 {
+		t.Errorf("expected lower-priority uncertain files to be trimmed first, got %v", pack.UncertainNodes)
+	}
+}
+
+func TestBuild_SummaryMarkdown(t *testing.T) {
+	b := NewBuilder(nil)
+
+	cards := []*schema.FileCard{
+		createCardWithScore("main.go", 0.8),
+		createCardWithScore("comp.go", 0.4),
+	}
+
+	result := &ranking.RankResult{Cards: cards}
+	pack := b.Build(&BuildInput{Task: "summarize", RankResult: result})
+
+	if pack.SummaryMarkdown == "" {
+		t.Fatal("expected summary_markdown to be populated")
+	}
+	if !containsString(pack.SummaryMarkdown, "main.go") {
+		t.Errorf("expected summary_markdown to mention reading order files, got %q", pack.SummaryMarkdown)
 	}
 }
 
@@ -384,4 +458,17 @@ func createCardWithScore(path string, score float64) *schema.FileCard {
 			FinalScore: score,
 		},
 	}
+}
+
+func containsString(s, substr string) bool {
+	return len(substr) == 0 || (len(s) >= len(substr) && (s == substr || stringContainsAt(s, substr)))
+}
+
+func stringContainsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
