@@ -22,6 +22,7 @@ type ProgressReporter interface {
 	Startf(format string, args ...any)
 	Done()
 	DoneWithCount(count int, label string)
+	Infof(format string, args ...any)
 }
 
 // noopProgress is a no-op progress reporter.
@@ -31,6 +32,7 @@ func (n *noopProgress) Start(string)              {}
 func (n *noopProgress) Startf(string, ...any)     {}
 func (n *noopProgress) Done()                     {}
 func (n *noopProgress) DoneWithCount(int, string) {}
+func (n *noopProgress) Infof(string, ...any)      {}
 
 // Runner orchestrates the full reconnaissance pipeline.
 type Runner struct {
@@ -254,9 +256,12 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 		targetCards = targetCards[:maxJobs]
 	}
 
+	const maxNeighborsInPrompt = 8
+
 	taskCards := make([]*llm.TaskCard, 0, len(targetCards))
 	for _, card := range targetCards {
 		taskCard := llm.NewTaskCardFromRequest(llm.TaskClassifyFileRole, req, card)
+		taskCard.FileNeighbors = selectTopNeighbors(card.Neighbors, req.SeedFiles, maxNeighborsInPrompt)
 		maxContextTokens := r.config.Runtime.MaxInputTokens - estimateTokenCount(taskCard.ToPrompt())
 		taskCard.SetContextSnippet(buildTaskContext(req.RepoRoot, card, req.FocusSymbols, maxContextTokens))
 		taskCards = append(taskCards, taskCard)
@@ -268,6 +273,12 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 		StopOnFirstError: false,
 	})
 	result := pool.Execute(context.Background(), taskCards)
+	r.progress.Infof(
+		"llm rerank: requested=%d succeeded=%d failed=%d",
+		result.TotalTasks,
+		result.SuccessfulTasks,
+		result.FailedTasks,
+	)
 	successful := 0
 	for i, taskResult := range result.Results {
 		if taskResult == nil {
@@ -309,6 +320,37 @@ func appendUniqueExpansionSources(existing []heuristics.ExpansionSource, additio
 		}
 	}
 	return existing
+}
+
+// selectTopNeighbors returns up to max neighbors, prioritizing seed files first.
+func selectTopNeighbors(neighbors, seedFiles []string, max int) []string {
+	if len(neighbors) == 0 || max <= 0 {
+		return nil
+	}
+	seedSet := make(map[string]bool, len(seedFiles))
+	for _, s := range seedFiles {
+		seedSet[s] = true
+	}
+	result := make([]string, 0, max)
+	// Priority 1: neighbors that are seed files
+	for _, n := range neighbors {
+		if len(result) >= max {
+			break
+		}
+		if seedSet[n] {
+			result = append(result, n)
+		}
+	}
+	// Priority 2: remaining neighbors
+	for _, n := range neighbors {
+		if len(result) >= max {
+			break
+		}
+		if !seedSet[n] {
+			result = append(result, n)
+		}
+	}
+	return result
 }
 
 // RunFromPath loads a ReconRequest from a JSON file and runs the pipeline.

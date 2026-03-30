@@ -4,6 +4,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,25 @@ import (
 
 	"github.com/no22/repo-scout/internal/config"
 	"github.com/no22/repo-scout/internal/llm"
+	"github.com/no22/repo-scout/internal/ranking"
 	"github.com/no22/repo-scout/internal/schema"
 )
+
+type recordingProgress struct {
+	messages []string
+}
+
+func (p *recordingProgress) Start(string) {}
+
+func (p *recordingProgress) Startf(string, ...any) {}
+
+func (p *recordingProgress) Done() {}
+
+func (p *recordingProgress) DoneWithCount(int, string) {}
+
+func (p *recordingProgress) Infof(format string, args ...any) {
+	p.messages = append(p.messages, fmt.Sprintf(format, args...))
+}
 
 // createTestRepo creates a temporary repository structure for testing.
 func createTestRepo(t *testing.T) string {
@@ -328,6 +346,41 @@ func TestRunner_LLMRerank(t *testing.T) {
 	}
 }
 
+func TestRunner_LLMRerankLogsSummary(t *testing.T) {
+	repoRoot := createTestRepo(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Runtime.EnableModelRerank = true
+
+	progress := &recordingProgress{}
+	r := NewRunnerWithProgress(cfg, progress)
+	r.adapter = llm.NewMockAdapter()
+
+	req := &schema.ReconRequest{
+		Task:      "Inspect auth flow",
+		RepoRoot:  repoRoot,
+		SeedFiles: []string{"internal/auth/handler.go"},
+	}
+
+	_, err := r.Run(req)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	found := false
+	for _, msg := range progress.messages {
+		if strings.Contains(msg, "llm rerank: requested=") &&
+			strings.Contains(msg, "succeeded=") &&
+			strings.Contains(msg, "failed=") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected LLM rerank summary log, got %v", progress.messages)
+	}
+}
+
 func TestBuildTaskContext_FillsRemainingBudgetWithSnippets(t *testing.T) {
 	repoRoot := createTestRepo(t)
 	card := schema.NewFileCard("internal/auth/handler.go")
@@ -368,6 +421,31 @@ func TestBuildTaskContext_IncludesOutlineAndImports(t *testing.T) {
 	}
 	if !strings.Contains(context, "func (h *Handler) Login") {
 		t.Fatalf("expected declaration hint in context, got: %s", context)
+	}
+}
+
+func TestFormatStructuralScore_UsesRankerFormula(t *testing.T) {
+	scores := &schema.FileScores{
+		DiscoveryScore: 0.7,
+		ModuleWeight:   0.8,
+		HeuristicScore: 0.5,
+		ProfileScore:   0.4,
+	}
+
+	got := formatStructuralScore(scores)
+	wantScore := ranking.StructuralScore(scores, ranking.DefaultRankerConfig())
+
+	if !strings.Contains(got, "Structural score:") {
+		t.Fatalf("expected structural score line, got %q", got)
+	}
+	if !strings.Contains(got, "discovery=0.70") ||
+		!strings.Contains(got, "module=0.80") ||
+		!strings.Contains(got, "heuristic=0.50") ||
+		!strings.Contains(got, "profile=0.40") {
+		t.Fatalf("expected component breakdown, got %q", got)
+	}
+	if !strings.Contains(got, fmt.Sprintf("Structural score: %.2f", wantScore)) {
+		t.Fatalf("expected formatted score to match ranker formula (%0.2f), got %q", wantScore, got)
 	}
 }
 

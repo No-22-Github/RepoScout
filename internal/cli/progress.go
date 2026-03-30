@@ -67,6 +67,16 @@ func (p *ProgressReporter) DoneWithCount(count int, label string) {
 	fmt.Fprintf(os.Stderr, "%s done (%d %s) %s\n", p.prefix, count, label, Gray(elapsed.String()))
 }
 
+// Infof reports an informational message.
+func (p *ProgressReporter) Infof(format string, args ...interface{}) {
+	if p.quiet {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "%s %s\n", p.prefix, fmt.Sprintf(format, args...))
+}
+
 // Error reports an error.
 func (p *ProgressReporter) Error(err error) {
 	if p.quiet {
