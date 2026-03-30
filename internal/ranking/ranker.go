@@ -236,8 +236,9 @@ func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreak
 		bd.StructuralScore = StructuralScore(card.Scores, r.config)
 
 		var finalScore float64
-		if llmScore > 0 {
-			// Two-phase blend: LLM dominates when available
+		if hasLLMJudgment(card) {
+			// Blend whenever we have a valid LLM judgment, including "irrelevant",
+			// so the model can actively demote structurally noisy candidates.
 			bd.LLMContribution = llmScore * r.config.LLMWeight
 			finalScore = bd.StructuralScore*(1-r.config.LLMWeight) + bd.LLMContribution
 		} else {
@@ -290,6 +291,19 @@ func calculateLLMScore(card *schema.FileCard) float64 {
 	}
 
 	return labelScore * card.Scores.LLMConfidence
+}
+
+func hasLLMJudgment(card *schema.FileCard) bool {
+	if card == nil || card.Scores == nil || card.Scores.LLMConfidence <= 0 {
+		return false
+	}
+
+	switch card.Scores.LLMLabel {
+	case "main_chain", "companion", "uncertain", "irrelevant":
+		return true
+	default:
+		return false
+	}
 }
 
 // isSubModule returns true if child is a sub-module of parent.

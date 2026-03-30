@@ -303,6 +303,25 @@ func TestFinalScoreComputation(t *testing.T) {
 			t.Errorf("expected llm-enhanced card to rank first, got %s", result.Cards[0].Path)
 		}
 	})
+
+	t.Run("llm irrelevant can demote a noisy static match", func(t *testing.T) {
+		card1 := schema.NewFileCard("noisy-static.go")
+		card1.Scores.HeuristicScore = 0.8
+		card1.Scores.LLMLabel = "irrelevant"
+		card1.Scores.LLMConfidence = 1.0
+
+		card2 := schema.NewFileCard("clean-static.go")
+		card2.Scores.HeuristicScore = 0.5
+
+		ranker := NewRanker(nil)
+		result := ranker.Rank(&RankInput{Cards: []*schema.FileCard{card1, card2}})
+		if result.Cards[0].Path != "clean-static.go" {
+			t.Errorf("expected irrelevant judgment to demote noisy-static.go, got %s first", result.Cards[0].Path)
+		}
+		if !(card1.Scores.FinalScore < card2.Scores.FinalScore) {
+			t.Errorf("expected irrelevant card score (%f) to be below clean card (%f)", card1.Scores.FinalScore, card2.Scores.FinalScore)
+		}
+	})
 }
 
 func TestRankResultMethods(t *testing.T) {

@@ -381,6 +381,49 @@ func TestRunner_LLMRerankLogsSummary(t *testing.T) {
 	}
 }
 
+func TestRunner_LLMRerankPromptIncludesNeighbors(t *testing.T) {
+	repoRoot := createTestRepo(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Runtime.EnableModelRerank = true
+	cfg.Runtime.MaxInputTokens = 256
+
+	r := NewRunner(cfg)
+	mockAdapter := llm.NewMockAdapter()
+	var seenNeighbors []string
+	mockAdapter.ExecuteFunc = func(ctx context.Context, card *llm.TaskCard) (*llm.TaskResult, error) {
+		if card.FilePath == "internal/auth/handler.go" {
+			seenNeighbors = append(seenNeighbors, card.FileNeighbors...)
+		}
+		return &llm.TaskResult{
+			Type:           llm.TaskClassifyFileRole,
+			Classification: "companion",
+			Confidence:     0.8,
+		}, nil
+	}
+	r.adapter = mockAdapter
+
+	_, err := r.Run(&schema.ReconRequest{
+		Task:      "Inspect auth flow",
+		RepoRoot:  repoRoot,
+		SeedFiles: []string{"internal/auth/handler.go"},
+	})
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	found := false
+	for _, neighbor := range seenNeighbors {
+		if neighbor == "internal/config/config.go" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected LLM prompt neighbors to include internal/config/config.go, got %v", seenNeighbors)
+	}
+}
+
 func TestAvailableContextTokens_ReservesSystemPromptAndContextHeader(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Runtime.MaxInputTokens = 200

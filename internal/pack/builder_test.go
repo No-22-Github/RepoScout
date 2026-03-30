@@ -263,6 +263,28 @@ func TestBuild_RiskHints(t *testing.T) {
 			t.Error("expected configuration risk hint when config files present")
 		}
 	})
+
+	t.Run("test_file tag counts as test coverage", func(t *testing.T) {
+		testCard := createCardWithScore("internal/auth/handler_extra.cc", 0.4)
+		testCard.HeuristicTags = []string{"test_file"}
+
+		cards := []*schema.FileCard{
+			createCardWithScore("main1.go", 0.8),
+			createCardWithScore("main2.go", 0.7),
+			createCardWithScore("main3.go", 0.6),
+			createCardWithScore("main4.go", 0.55),
+			testCard,
+		}
+
+		result := &ranking.RankResult{Cards: cards}
+		pack := b.Build(&BuildInput{Task: "test", RankResult: result})
+
+		for _, hint := range pack.RiskHints {
+			if hint.Category == "test-coverage" {
+				t.Fatalf("did not expect test-coverage warning when a test_file-tagged card exists: %+v", hint)
+			}
+		}
+	})
 }
 
 func TestBuild_Stats(t *testing.T) {
@@ -425,6 +447,14 @@ func TestIsTestFile(t *testing.T) {
 	}
 	if !isTestFile(card) {
 		t.Error("expected file with 'tests' tag to be identified as test file")
+	}
+
+	card = &schema.FileCard{
+		Path:          "verify.go",
+		HeuristicTags: []string{"test_file"},
+	}
+	if !isTestFile(card) {
+		t.Error("expected file with 'test_file' tag to be identified as test file")
 	}
 }
 

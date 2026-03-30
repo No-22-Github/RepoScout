@@ -91,6 +91,10 @@ type BuildOptions struct {
 	// DiscoverySources maps file paths to their discovery sources.
 	// This is populated by neighbor expansion.
 	DiscoverySources map[string][]ExpansionSource
+
+	// NeighborMap carries precomputed structural neighbors, typically from
+	// the import graph, keyed by repo-relative file path.
+	NeighborMap map[string][]string
 }
 
 // Build creates a FileCard for a single file.
@@ -124,6 +128,13 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 		symbols := b.symbolExtractor.ExtractFromFile(absPath, card.Lang)
 		for _, s := range symbols {
 			card.AddSymbol(s.Name)
+		}
+	}
+
+	// 6b. Attach structural neighbors if available.
+	if opts != nil && opts.NeighborMap != nil {
+		for _, neighbor := range opts.NeighborMap[filePath] {
+			card.AddNeighbor(neighbor)
 		}
 	}
 

@@ -24,6 +24,14 @@ const (
 	TagFeatureFlag       = "feature_flag"
 )
 
+var supportedFocusChecks = map[string]bool{
+	FocusCheckTests:              true,
+	FocusCheckDefaultConfig:      true,
+	FocusCheckResourcesOrStrings: true,
+	FocusCheckBuildRegistration:  true,
+	FocusCheckFeatureFlag:        true,
+}
+
 // RuleResult represents the result of applying a heuristic rule.
 type RuleResult struct {
 	// Tags are the heuristic tags applied by the rule.
@@ -129,12 +137,16 @@ func (e *BasicRuleEngine) ApplyRules(filePath string, focusChecks []string) *Rul
 	normalizedPath := filepath.ToSlash(filePath)
 	lowerPath := strings.ToLower(normalizedPath)
 
-	// Determine which checks to apply
-	applyAll := len(focusChecks) == 0
+	// Determine which checks to apply. Unknown checks are ignored, and if no
+	// recognized checks remain we fall back to applying all rules rather than
+	// silently disabling heuristics.
 	checks := make(map[string]bool)
 	for _, check := range focusChecks {
-		checks[check] = true
+		if supportedFocusChecks[check] {
+			checks[check] = true
+		}
 	}
+	applyAll := len(focusChecks) == 0 || len(checks) == 0
 
 	// Apply test rules
 	if applyAll || checks[FocusCheckTests] {
@@ -187,6 +199,11 @@ func (e *BasicRuleEngine) ApplyRules(filePath string, focusChecks []string) *Rul
 	}
 
 	return result
+}
+
+// IsSupportedFocusCheck reports whether the given focus check is implemented.
+func IsSupportedFocusCheck(check string) bool {
+	return supportedFocusChecks[check]
 }
 
 // matchTestFile checks if the file path matches test patterns.

@@ -28,7 +28,8 @@ type ReconRequest struct {
 	FocusSymbols []string `json:"focus_symbols,omitempty"`
 
 	// FocusChecks are specific checks or aspects to pay attention to (optional).
-	// Examples: "security", "performance", "error-handling", "thread-safety"
+	// Supported values: "tests", "default_config", "resources_or_strings",
+	// "build_registration", "feature_flag"
 	FocusChecks []string `json:"focus_checks,omitempty"`
 
 	// Budget constrains the analysis scope (optional).

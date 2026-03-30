@@ -104,7 +104,7 @@ reading order, and risk hints.`,
   reposcout run --task "Fix login bug" --repo ./project \
     --seed auth/login.go,auth/handler.go \
     --profile bug-fix \
-    --focus tests,security \
+    --focus tests,feature_flag \
     --format markdown
 
   # Enable LLM reranking
@@ -162,7 +162,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runRepo, "repo", "r", "", "Repository root path (required in parameter mode)")
 	runCmd.Flags().StringSliceVarP(&runSeed, "seed", "s", nil, "Seed files (comma-separated or multiple flags)")
 	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "Analysis profile (e.g., browser_settings)")
-	runCmd.Flags().StringSliceVar(&runFocus, "focus", nil, "Focus checks (comma-separated, e.g., tests,security)")
+	runCmd.Flags().StringSliceVar(&runFocus, "focus", nil, "Focus checks (comma-separated, e.g., tests,feature_flag)")
 	runCmd.Flags().IntVar(&runDepth, "depth", 0, "Candidate expansion depth (default: 1)")
 	runCmd.Flags().IntVar(&runMaxFiles, "max-files", 0, "Maximum output files (default: 20)")
 	runCmd.Flags().BoolVar(&runRerank, "rerank", false, "Enable LLM reranking")

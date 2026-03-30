@@ -116,7 +116,7 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 
 	// Phase 3: Build FileCards for all candidates
 	r.progress.Start("building file cards")
-	cards := r.buildFileCards(candidates, req, discoverySources)
+	cards := r.buildFileCards(candidates, req, discoverySources, importGraph)
 	r.progress.DoneWithCount(len(cards), "cards")
 
 	// Phase 4: Optionally enrich cards with model judgments and rank candidates.
@@ -190,8 +190,19 @@ func (r *Runner) expandCandidates(req *schema.ReconRequest, allFiles []string, i
 }
 
 // buildFileCards creates FileCards for all candidate files.
-func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, discoverySources map[string][]heuristics.ExpansionSource) []*schema.FileCard {
+func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, discoverySources map[string][]heuristics.ExpansionSource, importGraph *heuristics.ImportGraph) []*schema.FileCard {
 	builder := heuristics.NewFileCardBuilder(nil)
+	neighborMap := make(map[string][]string, len(candidates))
+	if importGraph != nil {
+		for _, candidate := range candidates {
+			neighbors := importGraph.Neighbors(candidate)
+			if len(neighbors) == 0 {
+				continue
+			}
+			sort.Strings(neighbors)
+			neighborMap[candidate] = neighbors
+		}
+	}
 
 	opts := &heuristics.BuildOptions{
 		RepoRoot:         req.RepoRoot,
@@ -200,6 +211,7 @@ func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, d
 		SeedFiles:        req.SeedFiles,
 		FocusSymbols:     req.FocusSymbols,
 		DiscoverySources: discoverySources,
+		NeighborMap:      neighborMap,
 	}
 
 	return builder.BuildAll(candidates, opts)

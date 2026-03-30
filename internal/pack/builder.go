@@ -354,7 +354,7 @@ func (b *Builder) checkConfiguration(pack *schema.ContextPack, cards []*schema.F
 func isTestFile(card *schema.FileCard) bool {
 	// Check heuristic tags
 	for _, tag := range card.HeuristicTags {
-		if tag == "tests" || tag == "test" {
+		if tag == "test_file" || tag == "tests" || tag == "test" {
 			return true
 		}
 	}

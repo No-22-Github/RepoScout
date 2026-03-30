@@ -199,6 +199,18 @@ func TestBasicRuleEngine_ApplyRules_AllChecks(t *testing.T) {
 	}
 }
 
+func TestBasicRuleEngine_ApplyRules_UnknownChecksFallBackToAll(t *testing.T) {
+	engine := NewBasicRuleEngine(nil)
+
+	result := engine.ApplyRules("src/feature_flag_test.go", []string{"security"})
+	if !containsTag(result.Tags, TagTestFile) {
+		t.Fatalf("expected unknown checks to fall back to all rules, got tags %v", result.Tags)
+	}
+	if !containsTag(result.Tags, TagFeatureFlag) {
+		t.Fatalf("expected feature_flag rule to still apply on fallback, got tags %v", result.Tags)
+	}
+}
+
 func TestBasicRuleEngine_ApplyRules_ScoreAccumulation(t *testing.T) {
 	engine := NewBasicRuleEngine(nil)
 

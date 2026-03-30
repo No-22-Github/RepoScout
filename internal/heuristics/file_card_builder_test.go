@@ -256,6 +256,29 @@ func TestFileCardBuilder_BuildWithDiscoverySources(t *testing.T) {
 	}
 }
 
+func TestFileCardBuilder_BuildWithNeighborMap(t *testing.T) {
+	tmpDir := t.TempDir()
+	builder := NewFileCardBuilder(nil)
+
+	card := builder.Build("internal/auth/handler.go", &BuildOptions{
+		RepoRoot: tmpDir,
+		NeighborMap: map[string][]string{
+			"internal/auth/handler.go": {
+				"internal/config/config.go",
+				"internal/auth/middleware.go",
+				"internal/config/config.go",
+			},
+		},
+	})
+
+	if len(card.Neighbors) != 2 {
+		t.Fatalf("expected 2 unique neighbors, got %v", card.Neighbors)
+	}
+	if card.Neighbors[0] != "internal/config/config.go" {
+		t.Fatalf("expected first neighbor to be internal/config/config.go, got %v", card.Neighbors)
+	}
+}
+
 func TestFileCardBuilder_BuildWithFocusSymbols(t *testing.T) {
 	tmpDir := t.TempDir()
 	builder := NewFileCardBuilder(nil)
