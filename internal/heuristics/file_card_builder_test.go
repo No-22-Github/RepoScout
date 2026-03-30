@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/no22/repo-scout/internal/analysis"
 )
 
 func TestFileCardBuilder_Build(t *testing.T) {
@@ -276,6 +278,41 @@ func TestFileCardBuilder_BuildWithNeighborMap(t *testing.T) {
 	}
 	if card.Neighbors[0] != "internal/config/config.go" {
 		t.Fatalf("expected first neighbor to be internal/config/config.go, got %v", card.Neighbors)
+	}
+}
+
+func TestFileCardBuilder_BuildUsesSourceIndexForSymbols(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repoRoot, "internal/auth"), 0755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "internal/auth/handler.go"), []byte(`package auth
+
+type Handler struct{}
+
+func NewHandler() *Handler { return &Handler{} }
+`), 0644); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	index := analysis.NewSourceIndex(repoRoot)
+	builder := NewFileCardBuilder(nil)
+	card := builder.Build("internal/auth/handler.go", &BuildOptions{
+		SourceIndex: index,
+	})
+
+	if len(card.Symbols) == 0 {
+		t.Fatalf("expected symbols from source index, got none")
+	}
+	found := false
+	for _, symbol := range card.Symbols {
+		if symbol == "NewHandler" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected NewHandler symbol from source index, got %v", card.Symbols)
 	}
 }
 

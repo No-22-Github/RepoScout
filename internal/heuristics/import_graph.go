@@ -2,10 +2,10 @@
 package heuristics
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/no22/repo-scout/internal/analysis"
 	"github.com/no22/repo-scout/internal/scanner"
 )
 
@@ -22,6 +22,7 @@ type ImportGraph struct {
 type ImportGraphBuilder struct {
 	repoRoot  string
 	extractor *scanner.ImportExtractor
+	sourceIdx *analysis.SourceIndex
 }
 
 // NewImportGraphBuilder creates a builder for the given repo root.
@@ -30,6 +31,12 @@ func NewImportGraphBuilder(repoRoot string) *ImportGraphBuilder {
 		repoRoot:  repoRoot,
 		extractor: scanner.NewImportExtractor(),
 	}
+}
+
+// WithSourceIndex reuses a shared source cache for reading file contents.
+func (b *ImportGraphBuilder) WithSourceIndex(idx *analysis.SourceIndex) *ImportGraphBuilder {
+	b.sourceIdx = idx
+	return b
 }
 
 // Build constructs the ImportGraph for the given set of files.
@@ -45,12 +52,12 @@ func (b *ImportGraphBuilder) Build(allFiles []string) *ImportGraph {
 
 	for _, relPath := range allFiles {
 		lang := LangDetect(relPath)
-		content, err := os.ReadFile(filepath.Join(b.repoRoot, relPath))
-		if err != nil {
+		content, ok := b.readContent(relPath)
+		if !ok {
 			continue
 		}
 
-		imports := b.extractor.ExtractImports(string(content), lang)
+		imports := b.extractor.ExtractImports(content, lang)
 		var resolved []string
 		for _, imp := range imports {
 			targets := resolveImport(imp, relPath, lang, baseIndex, pathIndex, dirIndex)
@@ -67,6 +74,21 @@ func (b *ImportGraphBuilder) Build(allFiles []string) *ImportGraph {
 	}
 
 	return &ImportGraph{Deps: deps, RevDeps: revDeps}
+}
+
+func (b *ImportGraphBuilder) readContent(relPath string) (string, bool) {
+	if b.sourceIdx != nil {
+		if content, ok := b.sourceIdx.Content(relPath); ok {
+			return content, true
+		}
+	}
+
+	if b.repoRoot == "" {
+		return "", false
+	}
+
+	fallbackIdx := analysis.NewSourceIndex(b.repoRoot)
+	return fallbackIdx.Content(relPath)
 }
 
 // Neighbors returns files that the given file imports or that import it.

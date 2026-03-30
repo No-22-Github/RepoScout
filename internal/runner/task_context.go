@@ -9,6 +9,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/no22/repo-scout/internal/analysis"
 	"github.com/no22/repo-scout/internal/ranking"
 	"github.com/no22/repo-scout/internal/schema"
 	"github.com/tiktoken-go/tokenizer"
@@ -55,7 +56,7 @@ func getSymbolPatterns(symbol string) []*regexp.Regexp {
 	return patterns
 }
 
-func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []string, maxContextTokens int) string {
+func buildTaskContext(repoRoot string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols []string, maxContextTokens int) string {
 	if card == nil {
 		return ""
 	}
@@ -74,7 +75,7 @@ func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 		return ""
 	}
 
-	if codeContext := buildCodeContext(repoRoot, card, focusSymbols, remaining); codeContext != "" {
+	if codeContext := buildCodeContext(repoRoot, sourceIndex, card, focusSymbols, remaining); codeContext != "" {
 		sections = append(sections, codeContext)
 	}
 
@@ -148,12 +149,12 @@ func describeDiscoverySources(sources []string) string {
 	return strings.Join(parts, ", ")
 }
 
-func buildCodeContext(repoRoot string, card *schema.FileCard, focusSymbols []string, budgetTokens int) string {
+func buildCodeContext(repoRoot string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols []string, budgetTokens int) string {
 	if repoRoot == "" || card == nil || card.Path == "" || budgetTokens <= 0 {
 		return ""
 	}
 
-	lines, ok := readContextLines(repoRoot, card.Path)
+	lines, ok := readContextLines(repoRoot, sourceIndex, card.Path)
 	if !ok {
 		return ""
 	}
@@ -162,7 +163,7 @@ func buildCodeContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 	usedTokens := 0
 
 	if budgetTokens >= minOutlineBudgetTokens {
-		if outline := buildFileOutline(lines, card, focusSymbols); outline != "" {
+		if outline := buildFileOutline(lines, sourceIndex, card, focusSymbols); outline != "" {
 			outlineTokens := estimateTokenCount(outline)
 			if outlineTokens <= budgetTokens {
 				parts = append(parts, outline)
@@ -173,7 +174,7 @@ func buildCodeContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 
 	remaining := budgetTokens - usedTokens
 	if remaining >= minSnippetBudgetTokens {
-		if snippets := buildRelevantSnippetsFromLines(lines, card, focusSymbols, remaining); snippets != "" {
+		if snippets := buildRelevantSnippetsFromLines(lines, sourceIndex, card, focusSymbols, remaining); snippets != "" {
 			parts = append(parts, snippets)
 		}
 	}
@@ -181,9 +182,15 @@ func buildCodeContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 	return strings.Join(parts, "\n\n")
 }
 
-func readContextLines(repoRoot, filePath string) ([]string, bool) {
+func readContextLines(repoRoot string, sourceIndex *analysis.SourceIndex, filePath string) ([]string, bool) {
 	if repoRoot == "" || filePath == "" {
 		return nil, false
+	}
+
+	if sourceIndex != nil {
+		if lines, ok := sourceIndex.Lines(filePath, contextReadLimit); ok {
+			return lines, true
+		}
 	}
 
 	absPath := filepath.Join(repoRoot, filePath)
@@ -202,7 +209,7 @@ func readContextLines(repoRoot, filePath string) ([]string, bool) {
 	return lines, true
 }
 
-func buildFileOutline(lines []string, card *schema.FileCard, focusSymbols []string) string {
+func buildFileOutline(lines []string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols []string) string {
 	if card == nil || len(lines) == 0 {
 		return ""
 	}
@@ -217,7 +224,7 @@ func buildFileOutline(lines []string, card *schema.FileCard, focusSymbols []stri
 		outlineLines = append(outlineLines, "Imports: "+strings.Join(limitStrings(imports, maxOutlineImports), ", "))
 	}
 
-	if sigs := extractDeclarationHints(lines, card, focusSymbols); len(sigs) > 0 {
+	if sigs := extractDeclarationHints(lines, sourceIndex, card, focusSymbols); len(sigs) > 0 {
 		outlineLines = append(outlineLines, "Relevant declarations:")
 		for _, sig := range limitStrings(sigs, maxOutlineSymbols) {
 			outlineLines = append(outlineLines, "- "+sig)
@@ -231,12 +238,12 @@ func buildFileOutline(lines []string, card *schema.FileCard, focusSymbols []stri
 	return strings.Join(outlineLines, "\n")
 }
 
-func buildRelevantSnippetsFromLines(lines []string, card *schema.FileCard, focusSymbols []string, budgetTokens int) string {
+func buildRelevantSnippetsFromLines(lines []string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols []string, budgetTokens int) string {
 	if card == nil || len(lines) == 0 || budgetTokens <= 0 {
 		return ""
 	}
 
-	windows := collectSnippetWindows(lines, focusSymbols, card.Symbols)
+	windows := collectSnippetWindows(lines, sourceIndex, card, focusSymbols, card.Symbols)
 	if len(windows) == 0 {
 		windows = append(windows, snippetWindow{
 			label: "file_excerpt",
@@ -277,12 +284,12 @@ func buildRelevantSnippetsFromLines(lines []string, card *schema.FileCard, focus
 	return strings.Join(parts, "\n\n")
 }
 
-func collectSnippetWindows(lines []string, focusSymbols, fileSymbols []string) []snippetWindow {
+func collectSnippetWindows(lines []string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols, fileSymbols []string) []snippetWindow {
 	symbols := prioritizedSymbols(focusSymbols, fileSymbols)
 	windows := make([]snippetWindow, 0, len(symbols))
 
 	for _, symbol := range symbols {
-		window, ok := findSymbolWindow(lines, symbol)
+		window, ok := findSymbolWindow(lines, sourceIndex, card, symbol)
 		if !ok {
 			continue
 		}
@@ -322,8 +329,16 @@ func prioritizedSymbols(focusSymbols, fileSymbols []string) []string {
 	return symbols
 }
 
-func findSymbolWindow(lines []string, symbol string) (snippetWindow, bool) {
-	lineIndex := findSymbolDeclarationLine(lines, symbol)
+func findSymbolWindow(lines []string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, symbol string) (snippetWindow, bool) {
+	lineIndex := -1
+	if sourceIndex != nil && card != nil {
+		if cachedLine, ok := sourceIndex.SymbolLine(card.Path, card.Lang, symbol); ok {
+			lineIndex = cachedLine
+		}
+	}
+	if lineIndex < 0 {
+		lineIndex = findSymbolDeclarationLine(lines, symbol)
+	}
 	if lineIndex < 0 {
 		lineIndex = findSymbolLine(lines, symbol)
 	}
@@ -523,11 +538,19 @@ func trimBlankEdgeLines(lines []string) []string {
 	return lines[start:end]
 }
 
-func extractDeclarationHints(lines []string, card *schema.FileCard, focusSymbols []string) []string {
+func extractDeclarationHints(lines []string, sourceIndex *analysis.SourceIndex, card *schema.FileCard, focusSymbols []string) []string {
 	symbols := prioritizedSymbols(focusSymbols, card.Symbols)
 	hints := make([]string, 0, len(symbols))
 	for _, symbol := range symbols {
-		lineIndex := findSymbolDeclarationLine(lines, symbol)
+		lineIndex := -1
+		if sourceIndex != nil && card != nil {
+			if cachedLine, ok := sourceIndex.SymbolLine(card.Path, card.Lang, symbol); ok {
+				lineIndex = cachedLine
+			}
+		}
+		if lineIndex < 0 {
+			lineIndex = findSymbolDeclarationLine(lines, symbol)
+		}
 		if lineIndex < 0 {
 			continue
 		}

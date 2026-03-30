@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/no22/repo-scout/internal/analysis"
 )
 
 // writeFile creates a file with content under dir.
@@ -126,6 +128,31 @@ import "github.com/x/repo/b"
 	}
 	if !found {
 		t.Errorf("expected a/a.go in neighbors of b/b.go, got %v", neighbors)
+	}
+}
+
+func TestImportGraph_UsesSharedSourceIndex(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, dir, "a/a.go", `package a
+import "github.com/x/repo/b"
+`)
+	writeFile(t, dir, "b/b.go", `package b`)
+
+	index := analysis.NewSourceIndex(dir)
+	if _, ok := index.Content("a/a.go"); !ok {
+		t.Fatal("failed to prewarm source index")
+	}
+	if err := os.Remove(filepath.Join(dir, "a/a.go")); err != nil {
+		t.Fatalf("failed to remove source file: %v", err)
+	}
+
+	allFiles := []string{"a/a.go", "b/b.go"}
+	g := NewImportGraphBuilder(dir).WithSourceIndex(index).Build(allFiles)
+
+	deps := g.Deps["a/a.go"]
+	if len(deps) != 1 || deps[0] != "b/b.go" {
+		t.Fatalf("expected cached source to preserve import resolution, got %v", deps)
 	}
 }
 

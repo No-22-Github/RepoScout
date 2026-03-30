@@ -203,6 +203,30 @@ func TestNeighborExpander_ExpandWithSources(t *testing.T) {
 	}
 }
 
+func TestNeighborExpander_ExpandMatchesExpandWithSourcesCandidates(t *testing.T) {
+	allFiles := []string{
+		"internal/auth/handler.go",
+		"internal/auth/handler_test.go",
+		"internal/auth/middleware.go",
+		"internal/config/config.go",
+	}
+
+	seedFiles := []string{"internal/auth/handler.go"}
+	expander := NewNeighborExpander(nil)
+
+	plain := expander.Expand(seedFiles, allFiles)
+	withSources := expander.ExpandWithSources(seedFiles, allFiles)
+
+	if len(plain) != len(withSources.Candidates) {
+		t.Fatalf("candidate length mismatch: Expand=%v ExpandWithSources=%v", plain, withSources.Candidates)
+	}
+	for i := range plain {
+		if plain[i] != withSources.Candidates[i] {
+			t.Fatalf("candidate mismatch at %d: Expand=%v ExpandWithSources=%v", i, plain, withSources.Candidates)
+		}
+	}
+}
+
 func TestExpandNeighbors(t *testing.T) {
 	allFiles := []string{
 		"a/b/file1.go",

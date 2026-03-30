@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/no22/repo-scout/internal/analysis"
 	"github.com/no22/repo-scout/internal/config"
 	"github.com/no22/repo-scout/internal/llm"
 	"github.com/no22/repo-scout/internal/ranking"
@@ -460,7 +461,7 @@ func TestBuildTaskContext_FillsRemainingBudgetWithSnippets(t *testing.T) {
 	card.DiscoveredBy = []string{"seed"}
 	card.HeuristicTags = []string{"auth"}
 
-	context := buildTaskContext(repoRoot, card, []string{"Login"}, 128)
+	context := buildTaskContext(repoRoot, analysis.NewSourceIndex(repoRoot), card, []string{"Login"}, 128)
 
 	if !strings.Contains(context, "Relevant code snippets:") {
 		t.Fatalf("expected context to include code snippets, got: %s", context)
@@ -479,7 +480,7 @@ func TestBuildTaskContext_IncludesOutlineAndImports(t *testing.T) {
 	card.Lang = "go"
 	card.Symbols = []string{"Handler", "Login"}
 
-	context := buildTaskContext(repoRoot, card, []string{"Login"}, 220)
+	context := buildTaskContext(repoRoot, analysis.NewSourceIndex(repoRoot), card, []string{"Login"}, 220)
 
 	if !strings.Contains(context, "File outline:") {
 		t.Fatalf("expected file outline in context, got: %s", context)
@@ -504,7 +505,7 @@ func TestBuildTaskContext_EmptyWhenBudgetExhausted(t *testing.T) {
 	card.Scores.DiscoveryScore = 1.0
 	card.Scores.HeuristicScore = 0.6
 
-	context := buildTaskContext(repoRoot, card, []string{"Login"}, 0)
+	context := buildTaskContext(repoRoot, analysis.NewSourceIndex(repoRoot), card, []string{"Login"}, 0)
 	if context != "" {
 		t.Fatalf("expected empty context with zero budget, got %q", context)
 	}
@@ -513,7 +514,7 @@ func TestBuildTaskContext_EmptyWhenBudgetExhausted(t *testing.T) {
 	if tinyBudget < 1 {
 		tinyBudget = 1
 	}
-	context = buildTaskContext(repoRoot, card, []string{"Login"}, tinyBudget)
+	context = buildTaskContext(repoRoot, analysis.NewSourceIndex(repoRoot), card, []string{"Login"}, tinyBudget)
 	if context != "" {
 		t.Fatalf("expected empty context when hints exceed budget, got %q", context)
 	}

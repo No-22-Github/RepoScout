@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/no22/repo-scout/internal/analysis"
 	"github.com/no22/repo-scout/internal/config"
 	"github.com/no22/repo-scout/internal/heuristics"
 	"github.com/no22/repo-scout/internal/llm"
@@ -99,9 +100,11 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 	}
 	r.progress.DoneWithCount(len(allFiles), "files")
 
+	sourceIndex := analysis.NewSourceIndex(req.RepoRoot)
+
 	// Phase 1b: Build import graph for static expansion
 	r.progress.Start("building import graph")
-	importGraph := heuristics.NewImportGraphBuilder(req.RepoRoot).Build(allFiles)
+	importGraph := heuristics.NewImportGraphBuilder(req.RepoRoot).WithSourceIndex(sourceIndex).Build(allFiles)
 	r.progress.Done()
 
 	// Phase 2: Expand seed files to candidate set
@@ -116,11 +119,11 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 
 	// Phase 3: Build FileCards for all candidates
 	r.progress.Start("building file cards")
-	cards := r.buildFileCards(candidates, req, discoverySources, importGraph)
+	cards := r.buildFileCards(candidates, req, discoverySources, importGraph, sourceIndex)
 	r.progress.DoneWithCount(len(cards), "cards")
 
 	// Phase 4: Optionally enrich cards with model judgments and rank candidates.
-	modelEnhanced := r.applyLLMRerank(req, cards)
+	modelEnhanced := r.applyLLMRerank(req, cards, sourceIndex)
 	r.progress.Start("ranking candidates")
 	rankResult := r.rankCards(cards)
 	r.progress.Done()
@@ -190,7 +193,7 @@ func (r *Runner) expandCandidates(req *schema.ReconRequest, allFiles []string, i
 }
 
 // buildFileCards creates FileCards for all candidate files.
-func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, discoverySources map[string][]heuristics.ExpansionSource, importGraph *heuristics.ImportGraph) []*schema.FileCard {
+func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, discoverySources map[string][]heuristics.ExpansionSource, importGraph *heuristics.ImportGraph, sourceIndex *analysis.SourceIndex) []*schema.FileCard {
 	builder := heuristics.NewFileCardBuilder(nil)
 	neighborMap := make(map[string][]string, len(candidates))
 	if importGraph != nil {
@@ -212,6 +215,7 @@ func (r *Runner) buildFileCards(candidates []string, req *schema.ReconRequest, d
 		FocusSymbols:     req.FocusSymbols,
 		DiscoverySources: discoverySources,
 		NeighborMap:      neighborMap,
+		SourceIndex:      sourceIndex,
 	}
 
 	return builder.BuildAll(candidates, opts)
@@ -249,7 +253,7 @@ func (r *Runner) builderConfig(req *schema.ReconRequest) *pack.BuilderConfig {
 	return cfg
 }
 
-func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCard) bool {
+func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCard, sourceIndex *analysis.SourceIndex) bool {
 	if !r.config.Runtime.EnableModelRerank || len(cards) == 0 {
 		return false
 	}
@@ -275,7 +279,7 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 		taskCard := llm.NewTaskCardFromRequest(llm.TaskClassifyFileRole, req, card)
 		taskCard.FileNeighbors = selectTopNeighbors(card.Neighbors, req.SeedFiles, maxNeighborsInPrompt)
 		maxContextTokens := availableContextTokens(r.config, taskCard)
-		taskCard.SetContextSnippet(buildTaskContext(req.RepoRoot, card, req.FocusSymbols, maxContextTokens))
+		taskCard.SetContextSnippet(buildTaskContext(req.RepoRoot, sourceIndex, card, req.FocusSymbols, maxContextTokens))
 		taskCards = append(taskCards, taskCard)
 	}
 

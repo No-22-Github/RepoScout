@@ -86,68 +86,11 @@ func (ne *NeighborExpander) WithImportGraph(g *ImportGraph) *NeighborExpander {
 //
 // All seed files are always included in the result.
 func (ne *NeighborExpander) Expand(seedFiles, allFiles []string) []string {
-	if len(seedFiles) == 0 {
-		return []string{}
-	}
-
-	// Build module to files mapping for efficient lookup
-	ne.buildModuleToFileMap(allFiles)
-
-	candidates := make(map[string]bool)
-
-	// Always include all seed files
-	for _, seed := range seedFiles {
-		candidates[seed] = true
-	}
-
-	// Build a quick lookup for seed files
-	seedSet := make(map[string]bool)
-	for _, seed := range seedFiles {
-		seedSet[seed] = true
-	}
-
-	// Expand for each seed file
-	for _, seed := range seedFiles {
-		// 1. Same directory expansion
-		if ne.config.IncludeSameDir {
-			ne.expandSameDir(seed, allFiles, candidates)
-		}
-
-		// 2. Same module expansion
-		if ne.config.IncludeSameModule {
-			ne.expandSameModule(seed, candidates)
-		}
-
-		// 3. Prefix match expansion
-		if ne.config.IncludePrefixMatch {
-			ne.expandPrefixMatch(seed, allFiles, candidates)
-		}
-
-		// 4. Companion sibling expansion
-		if ne.config.IncludeSiblingMatch {
-			ne.expandSiblingMatch(seed, allFiles, candidates)
-		}
-
-		// 5. Import-based expansion
-		if ne.config.IncludeImport && ne.importGraph != nil {
-			for _, file := range ne.importGraph.Neighbors(seed) {
-				candidates[file] = true
-			}
-		}
-	}
-
-	// Convert to sorted slice for stable output
-	result := make([]string, 0, len(candidates))
-	for path := range candidates {
-		result = append(result, path)
-	}
-	sort.Strings(result)
-
-	return result
+	return ne.expandCore(seedFiles, allFiles, false).Candidates
 }
 
 // expandSameDir adds files in the same directory as the seed file.
-func (ne *NeighborExpander) expandSameDir(seed string, allFiles []string, candidates map[string]bool) {
+func (ne *NeighborExpander) expandSameDir(seed string, allFiles []string, result *expansionAccumulator) {
 	seedDir := filepath.Dir(seed)
 	if seedDir == "." {
 		seedDir = ""
@@ -159,26 +102,26 @@ func (ne *NeighborExpander) expandSameDir(seed string, allFiles []string, candid
 			fileDir = ""
 		}
 		if fileDir == seedDir {
-			candidates[file] = true
+			result.add(file, SourceSameDir)
 		}
 	}
 }
 
 // expandSameModule adds files in the same module as the seed file.
-func (ne *NeighborExpander) expandSameModule(seed string, candidates map[string]bool) {
+func (ne *NeighborExpander) expandSameModule(seed string, result *expansionAccumulator) {
 	seedModule := ne.moduleDetector.Detect(seed)
 
 	// Get all files in the same module
 	if files, ok := ne.moduleToFileMap[seedModule]; ok {
 		for _, file := range files {
-			candidates[file] = true
+			result.add(file, SourceSameModule)
 		}
 	}
 }
 
 // expandPrefixMatch adds files with similar name prefixes.
 // For example, "settings_page.cc" would match "settings_handler.cc".
-func (ne *NeighborExpander) expandPrefixMatch(seed string, allFiles []string, candidates map[string]bool) {
+func (ne *NeighborExpander) expandPrefixMatch(seed string, allFiles []string, result *expansionAccumulator) {
 	seedName := filepath.Base(seed)
 	seedExt := filepath.Ext(seedName)
 	seedBase := strings.TrimSuffix(seedName, seedExt)
@@ -218,16 +161,16 @@ func (ne *NeighborExpander) expandPrefixMatch(seed string, allFiles []string, ca
 		if len(fileBase) >= prefixLen {
 			filePrefix := strings.ToLower(fileBase[:prefixLen])
 			if filePrefix == prefix {
-				candidates[file] = true
+				result.add(file, SourcePrefixMatch)
 			}
 		}
 	}
 }
 
-func (ne *NeighborExpander) expandSiblingMatch(seed string, allFiles []string, candidates map[string]bool) {
+func (ne *NeighborExpander) expandSiblingMatch(seed string, allFiles []string, result *expansionAccumulator) {
 	for _, file := range allFiles {
 		if ne.isSiblingMatch(seed, file) {
-			candidates[file] = true
+			result.add(file, SourceSiblingMatch)
 		}
 	}
 }
@@ -272,130 +215,100 @@ type ExpansionResult struct {
 	Sources map[string][]ExpansionSource
 }
 
-// ExpandWithSources expands seed files and tracks how each file was discovered.
-func (ne *NeighborExpander) ExpandWithSources(seedFiles, allFiles []string) *ExpansionResult {
-	if len(seedFiles) == 0 {
-		return &ExpansionResult{
-			Candidates: []string{},
-			Sources:    make(map[string][]ExpansionSource),
-		}
-	}
+type expansionAccumulator struct {
+	candidates   map[string]bool
+	sources      map[string][]ExpansionSource
+	trackSources bool
+}
 
-	// Build module to files mapping
-	ne.buildModuleToFileMap(allFiles)
-
+func (ne *NeighborExpander) newExpansionAccumulator(trackSources bool) *expansionAccumulator {
 	sources := make(map[string][]ExpansionSource)
-	candidates := make(map[string]bool)
-
-	// Mark all seed files
-	for _, seed := range seedFiles {
-		candidates[seed] = true
-		sources[seed] = append(sources[seed], SourceSeed)
+	if !trackSources {
+		sources = nil
 	}
-
-	// Expand for each seed file
-	for _, seed := range seedFiles {
-		// 1. Same directory expansion
-		if ne.config.IncludeSameDir {
-			seedDir := filepath.Dir(seed)
-			if seedDir == "." {
-				seedDir = ""
-			}
-			for _, file := range allFiles {
-				fileDir := filepath.Dir(file)
-				if fileDir == "." {
-					fileDir = ""
-				}
-				if fileDir == seedDir && !candidates[file] {
-					candidates[file] = true
-					sources[file] = append(sources[file], SourceSameDir)
-				}
-			}
-		}
-
-		// 2. Same module expansion
-		if ne.config.IncludeSameModule {
-			seedModule := ne.moduleDetector.Detect(seed)
-			if files, ok := ne.moduleToFileMap[seedModule]; ok {
-				for _, file := range files {
-					if !candidates[file] {
-						candidates[file] = true
-						sources[file] = append(sources[file], SourceSameModule)
-					}
-				}
-			}
-		}
-
-		// 3. Prefix match expansion
-		if ne.config.IncludePrefixMatch {
-			seedName := filepath.Base(seed)
-			seedExt := filepath.Ext(seedName)
-			seedBase := strings.TrimSuffix(seedName, seedExt)
-
-			minLen := ne.config.PrefixMinLength
-			if minLen <= 0 {
-				minLen = 3
-			}
-
-			if len(seedBase) >= minLen {
-				prefixLen := len(seedBase) / 2
-				if prefixLen < minLen {
-					prefixLen = minLen
-				}
-				if prefixLen > len(seedBase) {
-					prefixLen = len(seedBase)
-				}
-
-				prefix := strings.ToLower(seedBase[:prefixLen])
-
-				for _, file := range allFiles {
-					fileName := filepath.Base(file)
-					fileExt := filepath.Ext(fileName)
-					fileBase := strings.TrimSuffix(fileName, fileExt)
-
-					if len(fileBase) >= prefixLen {
-						filePrefix := strings.ToLower(fileBase[:prefixLen])
-						if filePrefix == prefix && !candidates[file] {
-							candidates[file] = true
-							sources[file] = append(sources[file], SourcePrefixMatch)
-						}
-					}
-				}
-			}
-		}
-
-		// 4. Companion sibling expansion
-		if ne.config.IncludeSiblingMatch {
-			for _, file := range allFiles {
-				if ne.isSiblingMatch(seed, file) && !candidates[file] {
-					candidates[file] = true
-					sources[file] = append(sources[file], SourceSiblingMatch)
-				}
-			}
-		}
-
-		// 5. Import-based expansion
-		if ne.config.IncludeImport && ne.importGraph != nil {
-			for _, file := range ne.importGraph.Neighbors(seed) {
-				if !candidates[file] {
-					candidates[file] = true
-					sources[file] = append(sources[file], SourceImport)
-				}
-			}
-		}
+	return &expansionAccumulator{
+		candidates:   make(map[string]bool),
+		sources:      sources,
+		trackSources: trackSources,
 	}
+}
 
-	// Convert to sorted slice
-	result := make([]string, 0, len(candidates))
-	for path := range candidates {
+func (e *expansionAccumulator) addSeed(path string) {
+	if path == "" {
+		return
+	}
+	e.candidates[path] = true
+	if e.trackSources {
+		e.sources[path] = append(e.sources[path], SourceSeed)
+	}
+}
+
+func (e *expansionAccumulator) add(path string, source ExpansionSource) {
+	if path == "" || e.candidates[path] {
+		return
+	}
+	e.candidates[path] = true
+	if e.trackSources {
+		e.sources[path] = append(e.sources[path], source)
+	}
+}
+
+func (e *expansionAccumulator) finalize() *ExpansionResult {
+	result := make([]string, 0, len(e.candidates))
+	for path := range e.candidates {
 		result = append(result, path)
 	}
 	sort.Strings(result)
+
+	sources := e.sources
+	if !e.trackSources {
+		sources = make(map[string][]ExpansionSource)
+	}
 
 	return &ExpansionResult{
 		Candidates: result,
 		Sources:    sources,
 	}
+}
+
+func (ne *NeighborExpander) expandCore(seedFiles, allFiles []string, trackSources bool) *ExpansionResult {
+	if len(seedFiles) == 0 {
+		return ne.newExpansionAccumulator(trackSources).finalize()
+	}
+
+	ne.buildModuleToFileMap(allFiles)
+	acc := ne.newExpansionAccumulator(trackSources)
+
+	for _, seed := range seedFiles {
+		acc.addSeed(seed)
+	}
+
+	for _, seed := range seedFiles {
+		if ne.config.IncludeSameDir {
+			ne.expandSameDir(seed, allFiles, acc)
+		}
+		if ne.config.IncludeSameModule {
+			ne.expandSameModule(seed, acc)
+		}
+		if ne.config.IncludePrefixMatch {
+			ne.expandPrefixMatch(seed, allFiles, acc)
+		}
+		if ne.config.IncludeSiblingMatch {
+			ne.expandSiblingMatch(seed, allFiles, acc)
+		}
+		if ne.config.IncludeImport && ne.importGraph != nil {
+			for _, file := range ne.importGraph.Neighbors(seed) {
+				acc.add(file, SourceImport)
+			}
+		}
+	}
+
+	return acc.finalize()
+}
+
+// ExpandWithSources expands seed files and tracks how each file was discovered.
+func (ne *NeighborExpander) ExpandWithSources(seedFiles, allFiles []string) *ExpansionResult {
+	return ne.expandCore(seedFiles, allFiles, true)
 }
 
 func (ne *NeighborExpander) isSiblingMatch(seed, file string) bool {

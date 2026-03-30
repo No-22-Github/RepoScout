@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/no22/repo-scout/internal/analysis"
 	"github.com/no22/repo-scout/internal/scanner"
 	"github.com/no22/repo-scout/internal/schema"
 )
@@ -95,6 +96,10 @@ type BuildOptions struct {
 	// NeighborMap carries precomputed structural neighbors, typically from
 	// the import graph, keyed by repo-relative file path.
 	NeighborMap map[string][]string
+
+	// SourceIndex caches candidate source contents for symbol extraction and
+	// later LLM context building.
+	SourceIndex *analysis.SourceIndex
 }
 
 // Build creates a FileCard for a single file.
@@ -123,11 +128,13 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 	}
 
 	// 6. Extract symbols if it's a source file
-	if IsSourceFile(filePath) && opts.RepoRoot != "" {
-		absPath := filepath.Join(opts.RepoRoot, filePath)
-		symbols := b.symbolExtractor.ExtractFromFile(absPath, card.Lang)
+	if IsSourceFile(filePath) {
+		symbols := b.extractSymbols(filePath, card.Lang, opts)
 		for _, s := range symbols {
 			card.AddSymbol(s.Name)
+		}
+		if opts != nil && opts.SourceIndex != nil && len(card.Symbols) > 0 {
+			opts.SourceIndex.PrecomputeSymbolLines(filePath, card.Lang, card.Symbols)
 		}
 	}
 
@@ -153,6 +160,21 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 	card.Scores.DiscoveryScore = discoveryScoreForSources(card.DiscoveredBy)
 
 	return card
+}
+
+func (b *FileCardBuilder) extractSymbols(filePath, lang string, opts *BuildOptions) []scanner.Symbol {
+	if opts != nil && opts.SourceIndex != nil {
+		if content, ok := opts.SourceIndex.Content(filePath); ok {
+			return b.symbolExtractor.ExtractFromContent(content, lang)
+		}
+	}
+
+	if opts != nil && opts.RepoRoot != "" {
+		absPath := filepath.Join(opts.RepoRoot, filePath)
+		return b.symbolExtractor.ExtractFromFile(absPath, lang)
+	}
+
+	return nil
 }
 
 // applyFocusSymbols boosts cards that match user-specified symbols or filenames.
