@@ -59,6 +59,9 @@ func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 	if card == nil {
 		return ""
 	}
+	if maxContextTokens <= 0 {
+		return ""
+	}
 
 	sections := make([]string, 0, 3)
 
@@ -67,12 +70,8 @@ func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 	}
 
 	remaining := maxContextTokens - estimateTokenCount(strings.Join(sections, "\n\n"))
-	if maxContextTokens <= 0 {
-		remaining = 0
-	}
-
 	if remaining <= 0 {
-		return strings.TrimSpace(strings.Join(sections, "\n\n"))
+		return ""
 	}
 
 	if codeContext := buildCodeContext(repoRoot, card, focusSymbols, remaining); codeContext != "" {

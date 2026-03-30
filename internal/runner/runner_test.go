@@ -381,6 +381,34 @@ func TestRunner_LLMRerankLogsSummary(t *testing.T) {
 	}
 }
 
+func TestAvailableContextTokens_ReservesSystemPromptAndContextHeader(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Runtime.MaxInputTokens = 200
+	cfg.Provider.SystemPromptPath = filepath.Join(t.TempDir(), "system.txt")
+	if err := os.WriteFile(cfg.Provider.SystemPromptPath, []byte("custom system prompt for tests"), 0644); err != nil {
+		t.Fatalf("failed to write system prompt: %v", err)
+	}
+
+	card := schema.NewFileCard("internal/auth/handler.go")
+	taskCard := llm.NewTaskCardFromRequest(llm.TaskClassifyFileRole, &schema.ReconRequest{
+		Task:      "Inspect auth flow",
+		SeedFiles: []string{"internal/auth/handler.go"},
+	}, card)
+
+	got := availableContextTokens(cfg, taskCard)
+	want := cfg.Runtime.MaxInputTokens -
+		estimateTokenCount(taskCard.ToPrompt()) -
+		estimateTokenCount(llm.LoadSystemPrompt(cfg.Provider.SystemPromptPath)) -
+		estimateTokenCount("## Context\n\n")
+	if want < 0 {
+		want = 0
+	}
+
+	if got != want {
+		t.Fatalf("availableContextTokens() = %d, want %d", got, want)
+	}
+}
+
 func TestBuildTaskContext_FillsRemainingBudgetWithSnippets(t *testing.T) {
 	repoRoot := createTestRepo(t)
 	card := schema.NewFileCard("internal/auth/handler.go")
@@ -421,6 +449,30 @@ func TestBuildTaskContext_IncludesOutlineAndImports(t *testing.T) {
 	}
 	if !strings.Contains(context, "func (h *Handler) Login") {
 		t.Fatalf("expected declaration hint in context, got: %s", context)
+	}
+}
+
+func TestBuildTaskContext_EmptyWhenBudgetExhausted(t *testing.T) {
+	repoRoot := createTestRepo(t)
+	card := schema.NewFileCard("internal/auth/handler.go")
+	card.Lang = "go"
+	card.DiscoveredBy = []string{"seed"}
+	card.HeuristicTags = []string{"auth"}
+	card.Scores.DiscoveryScore = 1.0
+	card.Scores.HeuristicScore = 0.6
+
+	context := buildTaskContext(repoRoot, card, []string{"Login"}, 0)
+	if context != "" {
+		t.Fatalf("expected empty context with zero budget, got %q", context)
+	}
+
+	tinyBudget := estimateTokenCount(buildStaticHints(card)) - 1
+	if tinyBudget < 1 {
+		tinyBudget = 1
+	}
+	context = buildTaskContext(repoRoot, card, []string{"Login"}, tinyBudget)
+	if context != "" {
+		t.Fatalf("expected empty context when hints exceed budget, got %q", context)
 	}
 }
 

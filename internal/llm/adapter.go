@@ -98,7 +98,7 @@ func NewOpenAICompatibleAdapter(cfg *AdapterConfig) *OpenAICompatibleAdapter {
 		}
 	}
 
-	systemPrompt := loadSystemPrompt(cfg.SystemPromptPath)
+	systemPrompt := LoadSystemPrompt(cfg.SystemPromptPath)
 
 	return &OpenAICompatibleAdapter{
 		config:       cfg,
@@ -107,8 +107,8 @@ func NewOpenAICompatibleAdapter(cfg *AdapterConfig) *OpenAICompatibleAdapter {
 	}
 }
 
-// loadSystemPrompt reads the system prompt from path, falling back to the default.
-func loadSystemPrompt(path string) string {
+// LoadSystemPrompt reads the system prompt from path, falling back to the default.
+func LoadSystemPrompt(path string) string {
 	if path != "" {
 		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
 			return strings.TrimSpace(string(data))

@@ -262,7 +262,7 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 	for _, card := range targetCards {
 		taskCard := llm.NewTaskCardFromRequest(llm.TaskClassifyFileRole, req, card)
 		taskCard.FileNeighbors = selectTopNeighbors(card.Neighbors, req.SeedFiles, maxNeighborsInPrompt)
-		maxContextTokens := r.config.Runtime.MaxInputTokens - estimateTokenCount(taskCard.ToPrompt())
+		maxContextTokens := availableContextTokens(r.config, taskCard)
 		taskCard.SetContextSnippet(buildTaskContext(req.RepoRoot, card, req.FocusSymbols, maxContextTokens))
 		taskCards = append(taskCards, taskCard)
 	}
@@ -288,6 +288,22 @@ func (r *Runner) applyLLMRerank(req *schema.ReconRequest, cards []*schema.FileCa
 		successful++
 	}
 	return successful > 0
+}
+
+func availableContextTokens(cfg *config.Config, taskCard *llm.TaskCard) int {
+	if cfg == nil || taskCard == nil {
+		return 0
+	}
+
+	reserved := estimateTokenCount(taskCard.ToPrompt())
+	reserved += estimateTokenCount(llm.LoadSystemPrompt(cfg.Provider.SystemPromptPath))
+	reserved += estimateTokenCount("## Context\n\n")
+
+	remaining := cfg.Runtime.MaxInputTokens - reserved
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
 }
 
 func joinLimited(values []string, limit int) string {

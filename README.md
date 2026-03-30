@@ -109,6 +109,14 @@ LLM rerank 时发送的 system prompt 默认内置在代码里（精简版，适
 - **编辑源文件**：修改 `internal/llm/prompts/classify_system.txt`，重新编译即可。
 - **运行时指定**：在配置文件里设置 `system_prompt_path` 指向外部文本文件，无需重新编译。路径支持相对路径（相对于配置文件所在目录）和绝对路径。也可通过环境变量 `REPOSCOUT_PROVIDER_SYSTEM_PROMPT_PATH` 设置。
 
+### max_input_tokens
+
+`max_input_tokens` 控制单次 LLM rerank 的总输入预算，不只是代码片段预算。它同时覆盖 system prompt、文件元信息和 RepoScout 自动拼接的 `## Context` 内容。
+
+RepoScout 会先预留前面的固定部分，再把剩余预算留给上下文摘要和代码片段，所以这个值本质上决定了给模型喂多少上下文，RepoScout 会根据设置的数量，结合文件内容智能填充，尽可能填充到设置上限。
+
+调参时建议先落在模型上下文窗口的“甜点区”，不要理解为模型的实际上下文上限。
+
 ## 输出结构
 
 ```json
