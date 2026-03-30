@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./title.webp" alt="RepoScout title banner" width="960" />
+  <img src="./docs/title.webp" alt="RepoScout title banner" width="960" />
 </p>
 
 <h1 align="center">RepoScout</h1>
