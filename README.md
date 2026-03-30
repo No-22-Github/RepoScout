@@ -1,10 +1,19 @@
-# RepoScout
+<p align="center">
+  <img src="./title.webp" alt="RepoScout title banner" width="960" />
+</p>
 
-给编程 Agent 用的仓库侦察工具。
+<h1 align="center">RepoScout</h1>
 
-在大仓库里做任务，通常一开始只能抓到主文件，很容易漏掉测试、配置、注册项、资源文件，或者散落在其他目录的配套实现。RepoScout 解决的就是这一步：给定少量 seed files，把可能相关的候选文件找出来，整理成一份适合继续读的 `ContextPack`。
+<p align="center">Repository reconnaissance for coding agents.</p>
 
-它不替你改代码，也不接管上游 Agent 的规划——只负责"找候选、理顺上下文"。
+<p align="center">
+  给编程 Agent 用的仓库侦察工具。给定少量 seed files，找出可能相关的候选文件，
+  整理成一份适合继续阅读和执行的 <code>ContextPack</code>。
+</p>
+
+<p align="center">
+  它不替你改代码，也不接管上游 Agent 的规划，只负责找候选、理顺上下文。
+</p>
 
 ## 工作流程
 
