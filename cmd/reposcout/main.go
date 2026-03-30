@@ -200,10 +200,11 @@ func runRecon(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load configuration
-	cfg, err := config.Load(configPath)
+	loadResult, err := config.LoadForRepoWithMeta(configPath, req.RepoRoot)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	cfg := loadResult.Config
 
 	// Handle rerank flags
 	if runRerank {
@@ -214,6 +215,7 @@ func runRecon(cmd *cobra.Command, args []string) error {
 
 	// Create progress reporter
 	progress := cli.NewProgressReporter(quiet)
+	reportLoadedConfigPaths(loadResult.LoadedPaths)
 
 	// Create runner with progress
 	r := runner.NewRunnerWithProgress(cfg, progress)
@@ -303,12 +305,6 @@ func buildRequestFromFlags() (*schema.ReconRequest, error) {
 
 // runEval executes the evaluation pipeline.
 func runEval(cmd *cobra.Command, args []string) error {
-	// Load configuration
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
 	// Create a runner function for the evaluator
 	runnerFunc := func(sample *eval.GoldenSample) ([]string, error) {
 		// Parse the recon request from the sample
@@ -321,6 +317,13 @@ func runEval(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse recon request: %w", err)
 		}
+
+		loadResult, err := config.LoadForRepoWithMeta(configPath, req.RepoRoot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load config: %w", err)
+		}
+		cfg := loadResult.Config
+		reportLoadedConfigPaths(loadResult.LoadedPaths)
 
 		// Run the recon
 		r := runner.NewRunner(cfg)
@@ -370,6 +373,17 @@ func runEval(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(out)
 	return nil
+}
+
+func reportLoadedConfigPaths(paths []string) {
+	if quiet {
+		return
+	}
+	if len(paths) == 0 {
+		fmt.Fprintln(os.Stderr, "reposcout: config files: none")
+		return
+	}
+	fmt.Fprintf(os.Stderr, "reposcout: config files: %s\n", strings.Join(paths, ", "))
 }
 
 // formatJSON formats the ContextPack as JSON.

@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func writeConfigFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
@@ -62,9 +72,7 @@ func TestLoadValidFile(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "config.json")
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write temp config: %v", err)
-	}
+	writeConfigFile(t, tmpFile, content)
 
 	cfg, err := Load(tmpFile)
 	if err != nil {
@@ -100,6 +108,121 @@ func TestLoadValidFile(t *testing.T) {
 	}
 	if cfg.Runtime.EnableModelRerank {
 		t.Error("expected enable_model_rerank to be false")
+	}
+}
+
+func TestLoadForRepo_LayeredPriority(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	repoDir := filepath.Join(tmpDir, "repo")
+	explicitPath := filepath.Join(tmpDir, "explicit.json")
+
+	t.Setenv("HOME", homeDir)
+
+	writeConfigFile(t, filepath.Join(homeDir, ".config", "reposcout.json"), `{
+		"provider": {
+			"base_url": "https://user.example/v1",
+			"api_key": "user-key"
+		},
+		"runtime": {
+			"max_candidates": 111,
+			"max_output_files": 11
+		}
+	}`)
+	writeConfigFile(t, filepath.Join(repoDir, ".reposcout.json"), `{
+		"provider": {
+			"model": "repo-model"
+		},
+		"runtime": {
+			"max_output_files": 22
+		}
+	}`)
+	writeConfigFile(t, explicitPath, `{
+		"provider": {
+			"base_url": "https://explicit.example/v1"
+		},
+		"runtime": {
+			"max_candidates": 333
+		}
+	}`)
+
+	t.Setenv("REPOSCOUT_PROVIDER_API_STYLE", "env-style")
+	t.Setenv("REPOSCOUT_RUNTIME_MAX_OUTPUT_FILES", "44")
+
+	result, err := LoadForRepoWithMeta(explicitPath, repoDir)
+	if err != nil {
+		t.Fatalf("failed to load layered config: %v", err)
+	}
+	cfg := result.Config
+
+	if cfg.Provider.BaseURL != "https://explicit.example/v1" {
+		t.Fatalf("expected explicit base_url, got %s", cfg.Provider.BaseURL)
+	}
+	if cfg.Provider.APIKey != "user-key" {
+		t.Fatalf("expected user api_key, got %s", cfg.Provider.APIKey)
+	}
+	if cfg.Provider.Model != "repo-model" {
+		t.Fatalf("expected repo model, got %s", cfg.Provider.Model)
+	}
+	if cfg.Provider.APIStyle != "env-style" {
+		t.Fatalf("expected env api_style, got %s", cfg.Provider.APIStyle)
+	}
+	if cfg.Runtime.MaxCandidates != 333 {
+		t.Fatalf("expected explicit max_candidates, got %d", cfg.Runtime.MaxCandidates)
+	}
+	if cfg.Runtime.MaxOutputFiles != 44 {
+		t.Fatalf("expected env max_output_files, got %d", cfg.Runtime.MaxOutputFiles)
+	}
+	wantPaths := []string{
+		filepath.Join(homeDir, ".config", "reposcout.json"),
+		filepath.Join(repoDir, ".reposcout.json"),
+		explicitPath,
+	}
+	if len(result.LoadedPaths) != len(wantPaths) {
+		t.Fatalf("expected %d loaded paths, got %v", len(wantPaths), result.LoadedPaths)
+	}
+	for i, want := range wantPaths {
+		if result.LoadedPaths[i] != want {
+			t.Fatalf("expected loaded path %d to be %s, got %s", i, want, result.LoadedPaths[i])
+		}
+	}
+}
+
+func TestLoadForRepo_UsesRepoRootInsteadOfCWD(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	cwdDir := filepath.Join(tmpDir, "cwd")
+	repoDir := filepath.Join(tmpDir, "repo")
+
+	t.Setenv("HOME", homeDir)
+	writeConfigFile(t, filepath.Join(cwdDir, ".reposcout.json"), `{
+		"provider": {
+			"model": "cwd-model"
+		}
+	}`)
+	writeConfigFile(t, filepath.Join(repoDir, ".reposcout.json"), `{
+		"provider": {
+			"model": "repo-model"
+		}
+	}`)
+
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(origWD)
+	}()
+	if err := os.Chdir(cwdDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	cfg, err := LoadForRepo("", repoDir)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+	if cfg.Provider.Model != "repo-model" {
+		t.Fatalf("expected repo model, got %s", cfg.Provider.Model)
 	}
 }
 

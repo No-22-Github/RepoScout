@@ -44,6 +44,12 @@ type Config struct {
 	Runtime  RuntimeConfig  `json:"runtime"`
 }
 
+// LoadResult describes the resolved config and which config files were applied.
+type LoadResult struct {
+	Config      *Config
+	LoadedPaths []string
+}
+
 // DefaultConfig returns a Config with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -64,29 +70,70 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load reads configuration from a JSON file, falling back to defaults.
-// Environment variables can override file values.
-func Load(path string) (*Config, error) {
+// configPaths returns the layered config file paths in order of increasing priority:
+// user config (~/.config/reposcout.json), repo config (.reposcout.json in repoRoot),
+// and the explicitly provided path (if any).
+func configPaths(explicit, repoRoot string) []string {
+	var paths []string
+
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".config", "reposcout.json"))
+	}
+
+	if repoRoot != "" {
+		paths = append(paths, filepath.Join(repoRoot, ".reposcout.json"))
+	} else if cwd, err := os.Getwd(); err == nil {
+		paths = append(paths, filepath.Join(cwd, ".reposcout.json"))
+	}
+
+	if explicit != "" {
+		paths = append(paths, explicit)
+	}
+
+	return paths
+}
+
+// mergeFile reads a JSON config file and merges it into cfg.
+// Missing files are silently skipped; parse errors are returned.
+func mergeFile(cfg *Config, path string) (bool, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve config path %s: %w", path, err)
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to read config file %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return false, fmt.Errorf("failed to parse config file %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// LoadForRepoWithMeta reads configuration using a layered strategy (lowest → highest priority):
+//  1. Built-in defaults
+//  2. User config: ~/.config/reposcout.json
+//  3. Repo config: .reposcout.json in repoRoot (or the current working directory if repoRoot is empty)
+//  4. Explicit path (the -c / --config flag), if provided
+//  5. Environment variables (REPOSCOUT_PROVIDER_* / REPOSCOUT_RUNTIME_*)
+func LoadForRepoWithMeta(path, repoRoot string) (*LoadResult, error) {
 	cfg := DefaultConfig()
+	loadedPaths := make([]string, 0, 3)
 
-	// Try to load from file if path is provided
-	if path != "" {
-		absPath, err := filepath.Abs(path)
+	for _, p := range configPaths(path, repoRoot) {
+		loaded, err := mergeFile(cfg, p)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve config path: %w", err)
+			return nil, err
 		}
-
-		data, err := os.ReadFile(absPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				// File doesn't exist, use defaults
-				return cfg, nil
+		if loaded {
+			absPath, err := filepath.Abs(p)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve config path %s: %w", p, err)
 			}
-			return nil, fmt.Errorf("failed to read config file: %w", err)
-		}
-
-		if err := json.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("failed to parse config file: %w", err)
+			loadedPaths = append(loadedPaths, absPath)
 		}
 	}
 
@@ -137,7 +184,25 @@ func Load(path string) (*Config, error) {
 		cfg.Runtime.EnableModelRerank = v == "true"
 	}
 
-	return cfg, nil
+	return &LoadResult{
+		Config:      cfg,
+		LoadedPaths: loadedPaths,
+	}, nil
+}
+
+// LoadForRepo reads configuration using the target repository root for repo-level config lookup.
+func LoadForRepo(path, repoRoot string) (*Config, error) {
+	result, err := LoadForRepoWithMeta(path, repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return result.Config, nil
+}
+
+// Load reads configuration using the current working directory as the repo config location.
+// Call LoadForRepo when the target repository root differs from the process working directory.
+func Load(path string) (*Config, error) {
+	return LoadForRepo(path, "")
 }
 
 // Validate checks if the configuration is valid.

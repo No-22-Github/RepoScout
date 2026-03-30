@@ -62,9 +62,19 @@ reposcout run request.json --rerank -c config.json
 | 测试配对 | 实现与测试文件互相关联（`_test`、`_spec`、`__tests__/` 等）|
 | import 图 | 通过 import/include 关系连接的文件（支持 Go、Python、JS/TS、C/C++、Ruby）|
 
-## 模型接入
+## 配置
 
-模型层可选，走 OpenAI-compatible `v1/chat/completions`。配置示例：
+配置按以下优先级叠加（低 → 高）：
+
+1. 内置默认值
+2. 用户配置：`~/.config/reposcout.json`
+3. 仓库配置：目标仓库根目录下的 `.reposcout.json`
+4. 显式指定：`-c config.json`
+5. 环境变量：`REPOSCOUT_PROVIDER_*` / `REPOSCOUT_RUNTIME_*`
+
+通常把 API key 和模型放用户配置，把仓库相关的参数（如 `max_output_files`）放仓库配置。
+
+配置文件示例：
 
 ```json
 {
@@ -74,10 +84,13 @@ reposcout run request.json --rerank -c config.json
     "model": "your-model"
   },
   "runtime": {
+    "enable_model_rerank": true,
     "max_input_tokens": 8192
   }
 }
 ```
+
+模型层可选，走 OpenAI-compatible `v1/chat/completions`。不配置时只走静态分析。
 
 ## 输出结构
 
