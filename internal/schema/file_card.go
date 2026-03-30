@@ -66,6 +66,10 @@ type FileScores struct {
 	// Range: 0.0 to 1.0
 	LLMConfidence float64 `json:"llm_confidence,omitempty"`
 
+	// DiscoveryScore reflects how the file was found.
+	// import=0.7, sibling=0.5, symbol_hit=0.3, same_dir/prefix=0.2, same_module=0.1, seed=1.0
+	DiscoveryScore float64 `json:"discovery_score,omitempty"`
+
 	// FinalScore is the combined final score used for ranking.
 	// Computed from other scores based on configurable weights.
 	FinalScore float64 `json:"final_score,omitempty"`

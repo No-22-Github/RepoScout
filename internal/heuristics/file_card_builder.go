@@ -127,16 +127,8 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 		}
 	}
 
-	// 7. Calculate initial heuristic score
+	// 7. Calculate initial heuristic score (keep ProfileScore separate for ranker)
 	card.Scores.HeuristicScore = basicResult.Score
-	if card.Scores.ProfileScore > 0 {
-		// Combine basic and profile scores
-		combinedScore := card.Scores.HeuristicScore + card.Scores.ProfileScore*0.5
-		if combinedScore > 1.0 {
-			combinedScore = 1.0
-		}
-		card.Scores.HeuristicScore = combinedScore
-	}
 
 	// 8. Boost cards that match user-provided focus symbols.
 	b.applyFocusSymbols(card, filePath, opts)
@@ -146,10 +138,14 @@ func (b *FileCardBuilder) Build(filePath string, opts *BuildOptions) *schema.Fil
 		card.Scores.SeedWeight = 1.0
 	}
 
+	// 10. Compute discovery score from how this file was found
+	card.Scores.DiscoveryScore = discoveryScoreForSources(card.DiscoveredBy)
+
 	return card
 }
 
 // applyFocusSymbols boosts cards that match user-specified symbols or filenames.
+// Only applies the boost once regardless of how many focus symbols match.
 func (b *FileCardBuilder) applyFocusSymbols(card *schema.FileCard, filePath string, opts *BuildOptions) {
 	if opts == nil || len(opts.FocusSymbols) == 0 {
 		return
@@ -165,19 +161,21 @@ func (b *FileCardBuilder) applyFocusSymbols(card *schema.FileCard, filePath stri
 		if strings.Contains(lowerPath, lowerFocus) {
 			card.AddDiscoveredBy("symbol_hit")
 			card.Scores.HeuristicScore += 0.2
-			break
+			if card.Scores.HeuristicScore > 1.0 {
+				card.Scores.HeuristicScore = 1.0
+			}
+			return
 		}
 
 		for _, symbol := range card.Symbols {
 			if strings.EqualFold(symbol, focus) || strings.Contains(strings.ToLower(symbol), lowerFocus) {
 				card.AddDiscoveredBy("symbol_hit")
 				card.Scores.HeuristicScore += 0.2
-				break
+				if card.Scores.HeuristicScore > 1.0 {
+					card.Scores.HeuristicScore = 1.0
+				}
+				return
 			}
-		}
-
-		if card.Scores.HeuristicScore > 1.0 {
-			card.Scores.HeuristicScore = 1.0
 		}
 	}
 }
@@ -190,6 +188,27 @@ func (b *FileCardBuilder) BuildAll(files []string, opts *BuildOptions) []*schema
 		cards = append(cards, card)
 	}
 	return cards
+}
+
+// discoveryScoreForSources returns the highest discovery score among the given sources.
+// Scores reflect how strongly each discovery method implies relevance.
+func discoveryScoreForSources(sources []string) float64 {
+	scores := map[string]float64{
+		"seed":          1.0,
+		"import":        0.7,
+		"sibling_match": 0.5,
+		"symbol_hit":    0.3,
+		"same_dir":      0.2,
+		"prefix_match":  0.2,
+		"same_module":   0.1,
+	}
+	best := 0.0
+	for _, s := range sources {
+		if v, ok := scores[s]; ok && v > best {
+			best = v
+		}
+	}
+	return best
 }
 
 // setDiscoverySources sets the discovery sources for a file.

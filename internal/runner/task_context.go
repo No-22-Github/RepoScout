@@ -9,6 +9,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/no22/repo-scout/internal/ranking"
 	"github.com/no22/repo-scout/internal/schema"
 	"github.com/tiktoken-go/tokenizer"
 )
@@ -34,7 +35,25 @@ type snippetWindow struct {
 var (
 	cl100kEncodingOnce sync.Once
 	cl100kEncoding     tokenizer.Codec
+	symbolPatternCache sync.Map // key: symbol string → []*regexp.Regexp
 )
+
+// getSymbolPatterns returns cached compiled regexes for the given symbol.
+func getSymbolPatterns(symbol string) []*regexp.Regexp {
+	if v, ok := symbolPatternCache.Load(symbol); ok {
+		return v.([]*regexp.Regexp)
+	}
+	q := regexp.QuoteMeta(symbol)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`\bfunc\b[^{\n]*\b` + q + `\b`),
+		regexp.MustCompile(`\b(type|class|struct|interface|enum|trait)\b[^{\n]*\b` + q + `\b`),
+		regexp.MustCompile(`\b(const|var|let)\b[^{\n=]*\b` + q + `\b`),
+		regexp.MustCompile(`\b(def|fn)\b[^{\n]*\b` + q + `\b`),
+		regexp.MustCompile(`\b` + q + `\b`),
+	}
+	symbolPatternCache.Store(symbol, patterns)
+	return patterns
+}
 
 func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []string, maxContextTokens int) string {
 	if card == nil {
@@ -64,14 +83,70 @@ func buildTaskContext(repoRoot string, card *schema.FileCard, focusSymbols []str
 }
 
 func buildStaticHints(card *schema.FileCard) string {
-	lines := make([]string, 0, 2)
+	lines := make([]string, 0, 3)
 	if len(card.DiscoveredBy) > 0 {
-		lines = append(lines, "Discovered by: "+joinLimited(card.DiscoveredBy, 4))
+		lines = append(lines, "Discovery: "+describeDiscoverySources(card.DiscoveredBy))
 	}
 	if len(card.HeuristicTags) > 0 {
 		lines = append(lines, "Heuristic tags: "+joinLimited(card.HeuristicTags, 4))
 	}
+	if card.Scores != nil {
+		if s := formatStructuralScore(card.Scores); s != "" {
+			lines = append(lines, s)
+		}
+	}
 	return strings.Join(lines, "\n")
+}
+
+// formatStructuralScore formats the pre-computed structural score components for LLM context.
+// Mirrors the ranker's structural formula (no LLM component).
+func formatStructuralScore(scores *schema.FileScores) string {
+	cfg := ranking.DefaultRankerConfig()
+	structural := ranking.StructuralScore(scores, cfg)
+	if structural <= 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, 4)
+	if scores.DiscoveryScore > 0 {
+		parts = append(parts, fmt.Sprintf("discovery=%.2f", scores.DiscoveryScore))
+	}
+	if scores.ModuleWeight > 0 {
+		parts = append(parts, fmt.Sprintf("module=%.2f", scores.ModuleWeight))
+	}
+	if scores.HeuristicScore > 0 {
+		parts = append(parts, fmt.Sprintf("heuristic=%.2f", scores.HeuristicScore))
+	}
+	if scores.ProfileScore > 0 {
+		parts = append(parts, fmt.Sprintf("profile=%.2f", scores.ProfileScore))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Structural score: %.2f (%s)", structural, strings.Join(parts, ", "))
+}
+
+// describeDiscoverySources converts raw discovery source tags to human-readable descriptions.
+func describeDiscoverySources(sources []string) string {
+	descriptions := map[string]string{
+		"seed":          "seed file (user-provided)",
+		"import":        "import graph (strong structural link)",
+		"sibling_match": "test/impl pair",
+		"symbol_hit":    "symbol match",
+		"same_dir":      "same directory",
+		"prefix_match":  "name prefix match",
+		"same_module":   "same module",
+	}
+	parts := make([]string, 0, len(sources))
+	for _, s := range sources {
+		if desc, ok := descriptions[s]; ok {
+			parts = append(parts, desc)
+		} else {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func buildCodeContext(repoRoot string, card *schema.FileCard, focusSymbols []string, budgetTokens int) string {
@@ -275,15 +350,9 @@ func findSymbolDeclarationLine(lines []string, symbol string) int {
 	if symbol == "" {
 		return -1
 	}
-
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`\bfunc\b[^{\n]*\b` + regexp.QuoteMeta(symbol) + `\b`),
-		regexp.MustCompile(`\b(type|class|struct|interface|enum|trait)\b[^{\n]*\b` + regexp.QuoteMeta(symbol) + `\b`),
-		regexp.MustCompile(`\b(const|var|let)\b[^{\n=]*\b` + regexp.QuoteMeta(symbol) + `\b`),
-		regexp.MustCompile(`\b(def|fn)\b[^{\n]*\b` + regexp.QuoteMeta(symbol) + `\b`),
-	}
+	patterns := getSymbolPatterns(symbol)
 	for i, line := range lines {
-		for _, pattern := range patterns {
+		for _, pattern := range patterns[:4] { // first 4 are declaration patterns
 			if pattern.MatchString(line) {
 				return i
 			}
@@ -297,7 +366,7 @@ func findSymbolLine(lines []string, symbol string) int {
 		return -1
 	}
 
-	pattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(symbol) + `\b`)
+	pattern := getSymbolPatterns(symbol)[4] // index 4 is the word-boundary pattern
 	for i, line := range lines {
 		if pattern.MatchString(line) {
 			return i
@@ -487,6 +556,39 @@ func detectCodeUnit(lines []string, lang string) string {
 			if strings.HasPrefix(trimmed, "class ") || strings.HasPrefix(trimmed, "def ") {
 				return "Entrypoint: " + collapseWhitespace(trimmed)
 			}
+		}
+	case "js", "jsx", "ts", "tsx":
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "export default ") ||
+				strings.HasPrefix(trimmed, "export class ") ||
+				strings.HasPrefix(trimmed, "export function ") ||
+				strings.HasPrefix(trimmed, "module.exports") {
+				return "Entrypoint: " + collapseWhitespace(trimmed)
+			}
+		}
+	case "rust":
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "pub mod ") || strings.HasPrefix(trimmed, "mod ") {
+				return "Module: " + collapseWhitespace(trimmed)
+			}
+		}
+	case "java":
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.Contains(trimmed, "class ") || strings.Contains(trimmed, "interface ") {
+				return "Type: " + collapseWhitespace(trimmed)
+			}
+		}
+	case "c", "cpp", "h", "hpp":
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "//") ||
+				strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "#include") {
+				continue
+			}
+			return "Decl: " + collapseWhitespace(trimmed)
 		}
 	}
 	return ""

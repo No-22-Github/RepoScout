@@ -2,6 +2,7 @@
 package ranking
 
 import (
+	"math"
 	"testing"
 
 	"github.com/no22/repo-scout/internal/schema"
@@ -9,8 +10,8 @@ import (
 
 func TestDefaultRankerConfig(t *testing.T) {
 	config := DefaultRankerConfig()
-	if config.SeedWeight <= 0 || config.SeedWeight > 1 {
-		t.Errorf("SeedWeight should be in (0, 1], got %f", config.SeedWeight)
+	if config.DiscoveryWeight <= 0 || config.DiscoveryWeight > 1 {
+		t.Errorf("DiscoveryWeight should be in (0, 1], got %f", config.DiscoveryWeight)
 	}
 	if config.SameModuleWeight <= 0 || config.SameModuleWeight > 1 {
 		t.Errorf("SameModuleWeight should be in (0, 1], got %f", config.SameModuleWeight)
@@ -42,16 +43,16 @@ func TestNewRanker(t *testing.T) {
 
 	t.Run("with custom config", func(t *testing.T) {
 		config := &RankerConfig{
-			SeedWeight:       0.5,
+			DiscoveryWeight:  0.5,
 			SameModuleWeight: 0.3,
 			HeuristicWeight:  0.2,
 			ProfileWeight:    0.1,
-			LLMWeight:        0.15,
+			LLMWeight:        0.65,
 			MaxFinalScore:    0.9,
 		}
 		ranker := NewRanker(config)
-		if ranker.config.SeedWeight != 0.5 {
-			t.Errorf("expected SeedWeight 0.5, got %f", ranker.config.SeedWeight)
+		if ranker.config.DiscoveryWeight != 0.5 {
+			t.Errorf("expected DiscoveryWeight 0.5, got %f", ranker.config.DiscoveryWeight)
 		}
 	})
 }
@@ -131,19 +132,19 @@ func TestRank(t *testing.T) {
 	t.Run("seed files ranked higher", func(t *testing.T) {
 		// Non-seed file with higher heuristic score
 		card1 := schema.NewFileCard("file1.go")
-		card1.Scores.SeedWeight = 0.0
+		card1.Scores.DiscoveryScore = 0.0
 		card1.Scores.HeuristicScore = 0.8
 
-		// Seed file with lower heuristic score
+		// Seed file with lower heuristic score but high discovery score
 		card2 := schema.NewFileCard("file2.go")
-		card2.Scores.SeedWeight = 1.0
+		card2.Scores.DiscoveryScore = 1.0
 		card2.AddDiscoveredBy("seed")
 		card2.Scores.HeuristicScore = 0.1
 
 		ranker := NewRanker(nil)
 		result := ranker.Rank(&RankInput{Cards: []*schema.FileCard{card1, card2}})
 
-		// Seed file should be ranked higher due to seed weight bonus
+		// Seed file should be ranked higher due to discovery score bonus
 		if result.Cards[0].Path != "file2.go" {
 			t.Errorf("seed file should be ranked first, got %s", result.Cards[0].Path)
 		}
@@ -203,7 +204,7 @@ func TestComputeModuleWeights(t *testing.T) {
 func TestFinalScoreComputation(t *testing.T) {
 	t.Run("all factors contribute", func(t *testing.T) {
 		card := schema.NewFileCard("browser/settings/settings_page.cc")
-		card.Scores.SeedWeight = 1.0
+		card.Scores.DiscoveryScore = 1.0 // seed
 		card.Scores.ModuleWeight = 1.0
 		card.Scores.HeuristicScore = 0.5
 		card.Scores.ProfileScore = 0.8
@@ -213,69 +214,66 @@ func TestFinalScoreComputation(t *testing.T) {
 		card.Module = "browser/settings"
 
 		config := &RankerConfig{
-			SeedWeight:       0.3,
-			SameModuleWeight: 0.2,
-			HeuristicWeight:  0.4,
-			ProfileWeight:    0.3,
-			LLMWeight:        0.2,
+			DiscoveryWeight:  0.35,
+			SameModuleWeight: 0.15,
+			HeuristicWeight:  0.20,
+			ProfileWeight:    0.10,
+			LLMWeight:        0.65,
 			MaxFinalScore:    1.0,
 		}
 
 		ranker := NewRanker(config)
 		result := ranker.Rank(&RankInput{Cards: []*schema.FileCard{card}})
 
-		// Verify score breakdown exists
 		bd, ok := result.ScoreBreakdown[card.Path]
 		if !ok {
 			t.Fatal("score breakdown not found")
 		}
 
-		// Verify contributions
-		expectedSeedContrib := 1.0 * 0.3
-		if bd.SeedContribution != expectedSeedContrib {
-			t.Errorf("seed contribution: expected %f, got %f", expectedSeedContrib, bd.SeedContribution)
+		const eps = 1e-9
+		// Verify structural contributions
+		expectedDiscoveryContrib := 1.0 * 0.35
+		if math.Abs(bd.DiscoveryContribution-expectedDiscoveryContrib) > eps {
+			t.Errorf("discovery contribution: expected %f, got %f", expectedDiscoveryContrib, bd.DiscoveryContribution)
 		}
 
-		expectedModuleContrib := 1.0 * 0.2
-		if bd.ModuleContribution != expectedModuleContrib {
+		expectedModuleContrib := 1.0 * 0.15
+		if math.Abs(bd.ModuleContribution-expectedModuleContrib) > eps {
 			t.Errorf("module contribution: expected %f, got %f", expectedModuleContrib, bd.ModuleContribution)
 		}
 
-		expectedHeuristicContrib := 0.5 * 0.4
-		if bd.HeuristicContribution != expectedHeuristicContrib {
+		expectedHeuristicContrib := 0.5 * 0.20
+		if math.Abs(bd.HeuristicContribution-expectedHeuristicContrib) > eps {
 			t.Errorf("heuristic contribution: expected %f, got %f", expectedHeuristicContrib, bd.HeuristicContribution)
 		}
 
-		expectedProfileContrib := 0.8 * 0.3
-		if bd.ProfileContribution != expectedProfileContrib {
+		expectedProfileContrib := 0.8 * 0.10
+		if math.Abs(bd.ProfileContribution-expectedProfileContrib) > eps {
 			t.Errorf("profile contribution: expected %f, got %f", expectedProfileContrib, bd.ProfileContribution)
 		}
 
-		expectedLLMContrib := 0.5 * 0.2
-		if bd.LLMContribution != expectedLLMContrib {
-			t.Errorf("llm contribution: expected %f, got %f", expectedLLMContrib, bd.LLMContribution)
-		}
-
-		// Final score should be sum of contributions, capped at 1.0
-		expectedFinal := expectedSeedContrib + expectedModuleContrib + expectedHeuristicContrib + expectedProfileContrib + expectedLLMContrib
+		// LLM score = main_chain(1.0) * confidence(0.5) = 0.5
+		// final = structural*(1-0.65) + llm*0.65
+		llmScore := 1.0 * 0.5
+		structural := expectedDiscoveryContrib + expectedModuleContrib + expectedHeuristicContrib + expectedProfileContrib
+		expectedFinal := structural*(1-0.65) + llmScore*0.65
 		if expectedFinal > 1.0 {
 			expectedFinal = 1.0
 		}
-		if bd.FinalScore != expectedFinal {
+		if math.Abs(bd.FinalScore-expectedFinal) > eps {
 			t.Errorf("final score: expected %f, got %f", expectedFinal, bd.FinalScore)
 		}
 	})
 
 	t.Run("score capped at max", func(t *testing.T) {
 		card := schema.NewFileCard("file.go")
-		card.Scores.SeedWeight = 1.0
+		card.Scores.DiscoveryScore = 1.0
 		card.Scores.ModuleWeight = 1.0
 		card.Scores.HeuristicScore = 1.0
 		card.Scores.ProfileScore = 1.0
 
-		// Use weights that would cause score > 1.0
 		config := &RankerConfig{
-			SeedWeight:       0.5,
+			DiscoveryWeight:  0.5,
 			SameModuleWeight: 0.5,
 			HeuristicWeight:  0.5,
 			ProfileWeight:    0.5,
@@ -308,12 +306,11 @@ func TestFinalScoreComputation(t *testing.T) {
 }
 
 func TestRankResultMethods(t *testing.T) {
-	// Create cards with different heuristic scores
-	// FinalScore will be computed by Rank: HeuristicScore * HeuristicWeight
-	// With default HeuristicWeight = 0.4:
-	// card1: 0.9 * 0.4 = 0.36
-	// card2: 0.5 * 0.4 = 0.20
-	// card3: 0.3 * 0.4 = 0.12
+	// FinalScore (no LLM, no discovery) = HeuristicScore * HeuristicWeight
+	// With default HeuristicWeight = 0.20:
+	// card1: 0.9 * 0.20 = 0.18
+	// card2: 0.5 * 0.20 = 0.10
+	// card3: 0.3 * 0.20 = 0.06
 	card1 := schema.NewFileCard("file1.go")
 	card1.Scores.HeuristicScore = 0.9
 
@@ -352,20 +349,20 @@ func TestRankResultMethods(t *testing.T) {
 	})
 
 	t.Run("GetFilesAboveThreshold", func(t *testing.T) {
-		// card1 has FinalScore = 0.9 * 0.4 = 0.36
-		// card2 has FinalScore = 0.5 * 0.4 = 0.20
-		// card3 has FinalScore = 0.3 * 0.4 = 0.12
+		// card1: 0.9 * 0.20 = 0.18
+		// card2: 0.5 * 0.20 = 0.10
+		// card3: 0.3 * 0.20 = 0.06
 
-		// Threshold 0.15: should get card1 and card2
-		above15 := result.GetFilesAboveThreshold(0.15)
-		if len(above15) != 2 {
-			t.Errorf("expected 2 files above 0.15, got %d", len(above15))
+		// Threshold 0.08: should get card1 and card2
+		above08 := result.GetFilesAboveThreshold(0.08)
+		if len(above08) != 2 {
+			t.Errorf("expected 2 files above 0.08, got %d", len(above08))
 		}
 
-		// Threshold 0.30: should get only card1
-		above30 := result.GetFilesAboveThreshold(0.30)
-		if len(above30) != 1 {
-			t.Errorf("expected 1 file above 0.30, got %d", len(above30))
+		// Threshold 0.15: should get only card1
+		above15 := result.GetFilesAboveThreshold(0.15)
+		if len(above15) != 1 {
+			t.Errorf("expected 1 file above 0.15, got %d", len(above15))
 		}
 	})
 }
@@ -458,7 +455,7 @@ func TestConvenienceFunctions(t *testing.T) {
 
 	t.Run("RankCardsWithConfig", func(t *testing.T) {
 		config := &RankerConfig{
-			SeedWeight:      0.5,
+			DiscoveryWeight: 0.5,
 			HeuristicWeight: 0.5,
 			MaxFinalScore:   1.0,
 		}
@@ -521,8 +518,8 @@ func TestScoreBreakdown(t *testing.T) {
 	}
 
 	// Verify all fields are populated
-	if bd.SeedWeight != card.Scores.SeedWeight {
-		t.Errorf("seed weight mismatch")
+	if bd.DiscoveryScore != card.Scores.DiscoveryScore {
+		t.Errorf("discovery score mismatch")
 	}
 	if bd.HeuristicScore != card.Scores.HeuristicScore {
 		t.Errorf("heuristic score mismatch")

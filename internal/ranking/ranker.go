@@ -10,24 +10,26 @@ import (
 
 // RankerConfig holds configuration for the ranking algorithm.
 type RankerConfig struct {
-	// SeedWeight is the weight for seed file bonus.
-	// Range: 0.0 to 1.0. Default: 0.3
-	SeedWeight float64
+	// DiscoveryWeight is the weight for how the file was discovered.
+	// import=0.7, sibling=0.5, seed=1.0, same_dir/prefix=0.2, same_module=0.1
+	// Range: 0.0 to 1.0. Default: 0.35
+	DiscoveryWeight float64
 
 	// SameModuleWeight is the weight bonus for files in the same module as seeds.
-	// Range: 0.0 to 1.0. Default: 0.2
+	// Range: 0.0 to 1.0. Default: 0.15
 	SameModuleWeight float64
 
 	// HeuristicWeight is the weight for heuristic score contribution.
-	// Range: 0.0 to 1.0. Default: 0.4
+	// Range: 0.0 to 1.0. Default: 0.20
 	HeuristicWeight float64
 
 	// ProfileWeight is the weight for profile score contribution.
-	// Range: 0.0 to 1.0. Default: 0.3
+	// Range: 0.0 to 1.0. Default: 0.10
 	ProfileWeight float64
 
-	// LLMWeight is the weight for model-enhanced relevance contribution.
-	// Range: 0.0 to 1.0. Default: 0.3
+	// LLMWeight is the weight for LLM relevance when blending with structural score.
+	// When LLM is available: final = structural*(1-LLMWeight) + llm*LLMWeight
+	// Range: 0.0 to 1.0. Default: 0.65
 	LLMWeight float64
 
 	// MaxFinalScore is the maximum allowed final score.
@@ -38,11 +40,11 @@ type RankerConfig struct {
 // DefaultRankerConfig returns the default configuration for the ranker.
 func DefaultRankerConfig() *RankerConfig {
 	return &RankerConfig{
-		SeedWeight:       0.3,
-		SameModuleWeight: 0.2,
-		HeuristicWeight:  0.4,
-		ProfileWeight:    0.3,
-		LLMWeight:        0.3,
+		DiscoveryWeight:  0.35,
+		SameModuleWeight: 0.15,
+		HeuristicWeight:  0.20,
+		ProfileWeight:    0.10,
+		LLMWeight:        0.65,
 		MaxFinalScore:    1.0,
 	}
 }
@@ -87,14 +89,17 @@ type FileScoreBreakdown struct {
 	Path string `json:"path"`
 
 	// Component scores (input)
-	SeedWeight     float64 `json:"seed_weight"`
+	DiscoveryScore float64 `json:"discovery_score"`
 	ModuleWeight   float64 `json:"module_weight"`
 	HeuristicScore float64 `json:"heuristic_score"`
 	ProfileScore   float64 `json:"profile_score"`
 	LLMScore       float64 `json:"llm_score"`
 
+	// Structural score (no LLM)
+	StructuralScore float64 `json:"structural_score"`
+
 	// Weighted contributions
-	SeedContribution      float64 `json:"seed_contribution"`
+	DiscoveryContribution float64 `json:"discovery_contribution"`
 	ModuleContribution    float64 `json:"module_contribution"`
 	HeuristicContribution float64 `json:"heuristic_contribution"`
 	ProfileContribution   float64 `json:"profile_contribution"`
@@ -207,29 +212,37 @@ func (r *Ranker) calculateModuleWeight(module string, seedModules map[string]boo
 }
 
 // computeFinalScores calculates the final score for each file.
+// When LLM data is available, it blends structural and LLM scores.
+// Without LLM, it uses a weighted sum of structural signals.
 func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreakdown {
 	breakdown := make(map[string]*FileScoreBreakdown)
 
 	for _, card := range input.Cards {
+		llmScore := calculateLLMScore(card)
 		bd := &FileScoreBreakdown{
 			Path:           card.Path,
-			SeedWeight:     card.Scores.SeedWeight,
+			DiscoveryScore: card.Scores.DiscoveryScore,
 			ModuleWeight:   card.Scores.ModuleWeight,
 			HeuristicScore: card.Scores.HeuristicScore,
 			ProfileScore:   card.Scores.ProfileScore,
-			LLMScore:       calculateLLMScore(card),
+			LLMScore:       llmScore,
 		}
 
-		// Compute weighted contributions
-		bd.SeedContribution = bd.SeedWeight * r.config.SeedWeight
+		// Structural score: weighted sum of non-LLM signals
+		bd.DiscoveryContribution = bd.DiscoveryScore * r.config.DiscoveryWeight
 		bd.ModuleContribution = bd.ModuleWeight * r.config.SameModuleWeight
 		bd.HeuristicContribution = bd.HeuristicScore * r.config.HeuristicWeight
 		bd.ProfileContribution = bd.ProfileScore * r.config.ProfileWeight
-		bd.LLMContribution = bd.LLMScore * r.config.LLMWeight
+		bd.StructuralScore = StructuralScore(card.Scores, r.config)
 
-		// Sum all contributions
-		finalScore := bd.SeedContribution + bd.ModuleContribution +
-			bd.HeuristicContribution + bd.ProfileContribution + bd.LLMContribution
+		var finalScore float64
+		if llmScore > 0 {
+			// Two-phase blend: LLM dominates when available
+			bd.LLMContribution = llmScore * r.config.LLMWeight
+			finalScore = bd.StructuralScore*(1-r.config.LLMWeight) + bd.LLMContribution
+		} else {
+			finalScore = bd.StructuralScore
+		}
 
 		// Cap at max
 		if finalScore > r.config.MaxFinalScore {
@@ -243,6 +256,20 @@ func (r *Ranker) computeFinalScores(input *RankInput) map[string]*FileScoreBreak
 	}
 
 	return breakdown
+}
+
+// StructuralScore returns the weighted non-LLM score for a file.
+func StructuralScore(scores *schema.FileScores, config *RankerConfig) float64 {
+	if scores == nil {
+		return 0.0
+	}
+	if config == nil {
+		config = DefaultRankerConfig()
+	}
+	return scores.DiscoveryScore*config.DiscoveryWeight +
+		scores.ModuleWeight*config.SameModuleWeight +
+		scores.HeuristicScore*config.HeuristicWeight +
+		scores.ProfileScore*config.ProfileWeight
 }
 
 func calculateLLMScore(card *schema.FileCard) float64 {
