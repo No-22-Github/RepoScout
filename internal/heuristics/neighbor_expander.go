@@ -30,6 +30,10 @@ type ExpandConfig struct {
 	// Default is true.
 	IncludeSiblingMatch bool
 
+	// IncludeImport includes files connected via import/include relationships.
+	// Default is true.
+	IncludeImport bool
+
 	// PrefixMinLength is the minimum length for prefix matching.
 	// Files with names shorter than this are not used for prefix matching.
 	// Default is 3.
@@ -44,6 +48,7 @@ func DefaultExpandConfig() *ExpandConfig {
 		IncludeSameModule:   true,
 		IncludePrefixMatch:  true,
 		IncludeSiblingMatch: true,
+		IncludeImport:       true,
 		PrefixMinLength:     3,
 	}
 }
@@ -53,6 +58,7 @@ type NeighborExpander struct {
 	config          *ExpandConfig
 	moduleDetector  *ModuleDetector
 	moduleToFileMap map[string][]string // cached mapping from module to files
+	importGraph     *ImportGraph        // optional import graph for import-based expansion
 }
 
 // NewNeighborExpander creates a new NeighborExpander with the given configuration.
@@ -64,6 +70,12 @@ func NewNeighborExpander(config *ExpandConfig) *NeighborExpander {
 		config:         config,
 		moduleDetector: NewModuleDetector(config.ModuleConfig),
 	}
+}
+
+// WithImportGraph sets the import graph for import-based expansion.
+func (ne *NeighborExpander) WithImportGraph(g *ImportGraph) *NeighborExpander {
+	ne.importGraph = g
+	return ne
 }
 
 // Expand builds the initial candidate set from seed files.
@@ -114,6 +126,13 @@ func (ne *NeighborExpander) Expand(seedFiles, allFiles []string) []string {
 		// 4. Companion sibling expansion
 		if ne.config.IncludeSiblingMatch {
 			ne.expandSiblingMatch(seed, allFiles, candidates)
+		}
+
+		// 5. Import-based expansion
+		if ne.config.IncludeImport && ne.importGraph != nil {
+			for _, file := range ne.importGraph.Neighbors(seed) {
+				candidates[file] = true
+			}
 		}
 	}
 
@@ -241,6 +260,7 @@ const (
 	SourceSameModule   ExpansionSource = "same_module"
 	SourcePrefixMatch  ExpansionSource = "prefix_match"
 	SourceSiblingMatch ExpansionSource = "sibling_match"
+	SourceImport       ExpansionSource = "import"
 )
 
 // ExpansionResult contains detailed information about how each file was discovered.
@@ -350,6 +370,16 @@ func (ne *NeighborExpander) ExpandWithSources(seedFiles, allFiles []string) *Exp
 				if ne.isSiblingMatch(seed, file) && !candidates[file] {
 					candidates[file] = true
 					sources[file] = append(sources[file], SourceSiblingMatch)
+				}
+			}
+		}
+
+		// 5. Import-based expansion
+		if ne.config.IncludeImport && ne.importGraph != nil {
+			for _, file := range ne.importGraph.Neighbors(seed) {
+				if !candidates[file] {
+					candidates[file] = true
+					sources[file] = append(sources[file], SourceImport)
 				}
 			}
 		}

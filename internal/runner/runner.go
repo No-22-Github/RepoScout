@@ -97,9 +97,14 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 	}
 	r.progress.DoneWithCount(len(allFiles), "files")
 
+	// Phase 1b: Build import graph for static expansion
+	r.progress.Start("building import graph")
+	importGraph := heuristics.NewImportGraphBuilder(req.RepoRoot).Build(allFiles)
+	r.progress.Done()
+
 	// Phase 2: Expand seed files to candidate set
 	r.progress.Startf("expanding candidates (depth=%d)", req.EffectiveExpandDepth())
-	candidates, discoverySources := r.expandCandidates(req, allFiles)
+	candidates, discoverySources := r.expandCandidates(req, allFiles, importGraph)
 
 	// Also apply runtime config limit
 	if r.config.Runtime.MaxCandidates > 0 && len(candidates) > r.config.Runtime.MaxCandidates {
@@ -127,7 +132,7 @@ func (r *Runner) Run(req *schema.ReconRequest) (*schema.ContextPack, error) {
 }
 
 // expandCandidates expands seed files to a candidate set.
-func (r *Runner) expandCandidates(req *schema.ReconRequest, allFiles []string) ([]string, map[string][]heuristics.ExpansionSource) {
+func (r *Runner) expandCandidates(req *schema.ReconRequest, allFiles []string, importGraph *heuristics.ImportGraph) ([]string, map[string][]heuristics.ExpansionSource) {
 	seedFiles := req.SeedFiles
 	// If no seed files, return a limited set of files
 	if len(seedFiles) == 0 {
@@ -143,7 +148,7 @@ func (r *Runner) expandCandidates(req *schema.ReconRequest, allFiles []string) (
 	}
 
 	// Use iterative neighbor expansion for the configured depth.
-	expander := heuristics.NewNeighborExpander(nil)
+	expander := heuristics.NewNeighborExpander(nil).WithImportGraph(importGraph)
 	depth := req.EffectiveExpandDepth()
 	maxNeighbors := req.EffectiveMaxSeedNeighbors()
 
