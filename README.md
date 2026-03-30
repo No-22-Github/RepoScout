@@ -1,60 +1,110 @@
 # RepoScout
 
-RepoScout 是一个给编程 Agent 用的仓库侦察工具。
+给编程 Agent 用的仓库侦察工具。
 
-它不负责替你改代码，也不打算接管上游 Agent 的规划。它做的事情更朴素一点：先在仓库里把可能相关的文件范围缩出来，再把这些文件整理成一个更适合继续读的 `ContextPack`。
+在大仓库里做任务，通常一开始只能抓到主文件，很容易漏掉测试、配置、注册项、资源文件，或者散落在其他目录的配套实现。RepoScout 解决的就是这一步：给定少量 seed files，把可能相关的候选文件找出来，整理成一份适合继续读的 `ContextPack`。
 
-如果你在大仓库里做任务，通常一开始只能抓到主文件，后面很容易漏掉测试、配置、注册项、资源文件，或者一些不在当前目录里的配套实现。RepoScout 想解决的就是这一步。
+它不替你改代码，也不接管上游 Agent 的规划——只负责"找候选、理顺上下文"。
 
-## 它现在做什么
+## 工作流程
 
-- 基于 `seed_files` 做静态扩展搜索
-- 为候选文件构建 `FileCard`
-- 输出 `main_chain`、`companion_files`、`reading_order`、`risk_hints`
-- 可选接 OpenAI-compatible 模型，对候选文件做轻量分析和 rerank
-
-一句话说，RepoScout 负责“找候选、理顺上下文”，上游 Agent 负责“继续读、继续想、继续改”。
-
-## 它现在不做什么
-
-- 不做 LLM 驱动搜索
-- 不接管上游 Agent 的规划职责
-- 不试图一次性把整仓代码都塞给模型
-
-## 适合什么场景
-
-- 你已经有少量 seed files，但不想漏掉配套文件
-- 你希望先拿到一份更像“阅读地图”的结果，再继续让 Agent 工作
-- 你想把模型调用压在一个比较小、比较稳的候选集合上
-
-## 当前主链路
-
-```text
-ReconRequest
-  ->
-Static Candidate Expansion
-  ->
-FileCard
-  ->
-Optional LLM Rerank
-  ->
-ContextPack
 ```
+ReconRequest
+  → 静态候选扩展（同目录 / 同模块 / 前缀匹配 / 测试配对 / import 图）
+  → FileCard 构建（语言、模块、符号、启发式评分）
+  → 可选 LLM Rerank（OpenAI-compatible）
+  → 多因子排序
+  → ContextPack 输出（main_chain / companion / reading_order / risk_hints）
+```
+
+静态层负责召回，LLM 层负责判断和重排，上游 Agent 负责继续读、继续改。
+
+## 快速上手
+
+```bash
+# 从 JSON 请求文件运行
+reposcout run request.json
+
+# 直接传参
+reposcout run --task "Add auth endpoint" --repo ./myproject --seed auth/handler.go
+
+# 输出 Markdown
+reposcout run request.json --format markdown
+
+# 开启 LLM rerank
+reposcout run request.json --rerank -c config.json
+```
+
+请求文件格式（`request.json`）：
+
+```json
+{
+  "task": "Add settings sync support",
+  "repo_root": "/path/to/repo",
+  "seed_files": ["browser/settings/settings_page.cc"],
+  "profile": "browser_settings",
+  "budget": {
+    "expand_depth": 1,
+    "max_output_files": 20
+  }
+}
+```
+
+## 候选扩展策略
+
+从 seed files 出发，通过以下五种方式扩展候选集：
+
+| 策略 | 说明 |
+|------|------|
+| 同目录 | seed 文件所在目录的全部文件 |
+| 同模块 | 路径结构相同的模块内文件 |
+| 前缀匹配 | 文件名前缀相似的文件（如 `settings_page` → `settings_handler`）|
+| 测试配对 | 实现与测试文件互相关联（`_test`、`_spec`、`__tests__/` 等）|
+| import 图 | 通过 import/include 关系连接的文件（支持 Go、Python、JS/TS、C/C++、Ruby）|
 
 ## 模型接入
 
-当前模型层是可选的，走 OpenAI-compatible `v1/chat/completions`。RepoScout 的默认思路不是“让模型负责搜索”，而是“让模型分析已经找到的候选文件”。
+模型层可选，走 OpenAI-compatible `v1/chat/completions`。配置示例：
 
-这也意味着：
+```json
+{
+  "provider": {
+    "base_url": "http://localhost:8080/v1",
+    "api_key": "sk-xxx",
+    "model": "your-model"
+  },
+  "runtime": {
+    "max_input_tokens": 8192
+  }
+}
+```
 
-- 静态层负责召回
-- LLM 层负责判断和重排
-- `runtime.max_input_tokens` 控制单次候选分析的输入预算
+## 输出结构
 
-## 文档
+```json
+{
+  "main_chain": ["..."],        // 核心相关文件，建议优先读
+  "companion_files": ["..."],   // 配套文件（测试、配置、资源等）
+  "uncertain": ["..."],         // 相关性不确定
+  "reading_order": ["..."],     // 建议阅读顺序
+  "risk_hints": ["..."]         // 潜在遗漏或风险提示
+}
+```
 
-- 项目说明与实现思路：[RepoScout_MVP.md](/home/no22/RepoScout/docs/RepoScout_MVP.md)
+## 评估
+
+```bash
+reposcout eval examples/goldens
+```
+
+对照 golden dataset 评估召回率和排序质量。
 
 ## 当前状态
 
-项目已经能跑通完整 CLI 主链路，也已经支持接入本地 OpenAI-compatible 后端，例如 RWKV。接下来主要还是继续增强两件事：静态扩展搜索质量，以及候选文件的上下文构建质量。
+主链路已跑通，支持接入本地 OpenAI-compatible 后端（如 RWKV）。接下来主要继续增强：静态扩展搜索质量，以及候选文件的上下文构建质量。
+
+MCP server 支持在计划中，尚未实现。
+
+## 文档
+
+- 设计思路与实现细节：[docs/RepoScout_MVP.md](docs/RepoScout_MVP.md)
