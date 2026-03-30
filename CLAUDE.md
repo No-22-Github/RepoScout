@@ -2,60 +2,72 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## 常用命令
 
 ```bash
-# Build
-go build ./cmd/reposcout
+# 构建
+go build ./cmd/reposcout/...
 
-# Test
+# 运行测试
 go test ./...
 
-# Run (file-based)
+# 运行单个包的测试
+go test ./internal/ranking/...
+
+# 运行（从请求文件）
 go run ./cmd/reposcout run examples/recon_request.sample.json
 
-# Run (inline)
-go run ./cmd/reposcout run --task "..." --repo ./path --seed file.go
+# 运行（直接传参）
+go run ./cmd/reposcout run --task "Add auth endpoint" --repo . --seed internal/runner/runner.go
 
-# Run with LLM rerank
-go run ./cmd/reposcout run examples/recon_request.sample.json --config examples/runtime_config.sample.json
-
-# Evaluate against golden dataset
+# 评估 golden dataset
 go run ./cmd/reposcout eval examples/goldens
 ```
 
-## Architecture
+## 架构概览
 
-RepoScout is a repository reconnaissance tool for coding agents. Given seed files and a task description, it identifies relevant candidate files and outputs a structured `ContextPack`.
+RepoScout 是一个给编程 Agent 用的仓库侦察工具。输入少量 seed files，输出一份 `ContextPack`（候选文件 + 阅读顺序 + 风险提示）。**只读不改**，不接管上游 Agent 的规划。
 
-**Pipeline** (in `runner.Run()`):
+### 主流水线（5 个阶段）
 
 ```
-ReconRequest → Scanner.ScanRepo() → ImportGraphBuilder.Build()
-    → NeighborExpander.Expand() (5 strategies)
-    → FileCardBuilder.Build() (symbols, heuristic scores)
-    → [Optional] LLM Rerank
-    → Ranker.Rank() (multi-factor scoring)
-    → ContextPackBuilder.Build() → ContextPack
+ReconRequest
+  → Phase 1:  scanner — 扫描仓库所有文件
+  → Phase 1b: import_graph — 构建静态依赖图
+  → Phase 2:  neighbor_expander — 从 seed 扩展候选（5 种策略）
+  → Phase 3:  file_card_builder — 构建 FileCard（元数据 + 启发式评分）
+  → Phase 4:  llm/worker_pool — 可选 LLM rerank（OpenAI-compatible）
+  → Phase 5:  ranker + pack/builder — 排序 + 组装 ContextPack
 ```
 
-**Packages:**
+流水线入口：`internal/runner/runner.go`
 
-| Package | Role |
-|---------|------|
-| `schema` | Core types: `ReconRequest`, `ContextPack`, `FileCard`, `RiskHint` |
-| `scanner` | Repo file scanning, language detection, symbol extraction |
-| `heuristics` | 5 static expansion strategies + file scoring rules |
-| `ranking` | Multi-factor scoring (seed 0.3, module 0.2, heuristic 0.4, profile 0.3, LLM 0.3) |
-| `pack` | Assembles `ContextPack`: classifies main_chain/companion/uncertain, reading order, risk hints |
-| `runner` | Orchestrates the full pipeline |
-| `llm` | OpenAI-compatible provider adapter for optional reranking |
-| `config` | Runtime config loading |
-| `cli` | Cobra CLI (`run`, `eval`, `version`, `mcp`) |
-| `output` | JSON and Markdown formatters |
-| `eval` | Golden dataset evaluation |
-| `mcp` | MCP server stub (not yet implemented) |
+### 核心数据结构（`internal/schema/`）
 
-**Output classification thresholds:** main_chain ≥ 0.5, companion_files 0.3–0.5, uncertain_nodes 0.1–0.3.
+- **ReconRequest**：输入，包含 `task`、`seed_files`、`profile`、`budget` 等
+- **FileCard**：中间态，每个候选文件的元数据、符号、邻居、各维度得分
+- **ContextPack**：输出，`main_chain`（≥0.5）/ `companion`（0.3–0.5）/ `uncertain`（0.1–0.3）/ `reading_order` / `risk_hints`
 
-**The 5 expansion strategies** (in `heuristics`): same directory, same module (path structure), prefix match, test/impl pairing, import graph connections.
+### 候选扩展策略（`internal/heuristics/neighbor_expander.go`）
+
+5 种策略：同目录、同模块、前缀匹配、测试配对、import 图。import 图支持 Go/Python/JS/TS/C/C++/Ruby。
+
+### 排序算法（`internal/ranking/ranker.go`）
+
+无 LLM：`score = DiscoveryScore×0.35 + ModuleWeight×0.15 + HeuristicScore×0.20 + ProfileScore×0.10`
+
+有 LLM：`score = structural×0.35 + llm_score×0.65`
+
+DiscoveryScore 权重：seed(1.0) > import图(0.7) > 测试配对(0.5) > symbol命中(0.3) > 同目录/前缀(0.2) > 同模块(0.1)
+
+### 配置系统（`internal/config/`）
+
+优先级从低到高：内置默认值 → `~/.config/reposcout.json` → 目标仓库 `.reposcout.json` → `-c config.json` → 环境变量（`REPOSCOUT_PROVIDER_*` / `REPOSCOUT_RUNTIME_*`）
+
+### LLM 集成（`internal/llm/`）
+
+走 OpenAI-compatible `v1/chat/completions`。System prompt 内置于 `internal/llm/prompts/classify_system.txt`，可通过配置的 `system_prompt_path` 在运行时覆盖，无需重新编译。`max_input_tokens` 控制单次 rerank 的总输入预算（含 system prompt + 元信息 + 代码片段）。
+
+### 评估（`internal/eval/`）
+
+Golden dataset 在 `examples/goldens/`，每个样本包含请求和期望输出。用 `reposcout eval` 对照评估召回率和排序质量。
