@@ -20,9 +20,9 @@
 ```
 ReconRequest
   → 静态候选扩展（同目录 / 同模块 / 前缀匹配 / 测试配对 / import 图）
-  → FileCard 构建（语言、模块、符号、启发式评分）
+  → FileCard 构建（语言、模块、符号、发现方式评分、启发式评分）
   → 可选 LLM Rerank（OpenAI-compatible）
-  → 多因子排序
+  → 两阶段排序（结构分 + LLM 混合）
   → ContextPack 输出（main_chain / companion / reading_order / risk_hints）
 ```
 
@@ -90,7 +90,8 @@ reposcout run request.json --rerank -c config.json
   "provider": {
     "base_url": "http://localhost:8080/v1",
     "api_key": "sk-xxx",
-    "model": "your-model"
+    "model": "your-model",
+    "system_prompt_path": "/path/to/my_system_prompt.txt"
   },
   "runtime": {
     "enable_model_rerank": true,
@@ -100,6 +101,13 @@ reposcout run request.json --rerank -c config.json
 ```
 
 模型层可选，走 OpenAI-compatible `v1/chat/completions`。不配置时只走静态分析。
+
+### system_prompt_path
+
+LLM rerank 时发送的 system prompt 默认内置在代码里（精简版，适合大多数模型）。如果需要针对特定模型调整，有两种方式：
+
+- **编辑源文件**：修改 `internal/llm/prompts/classify_system.txt`，重新编译即可。
+- **运行时指定**：在配置文件里设置 `system_prompt_path` 指向外部文本文件，无需重新编译。路径支持相对路径（相对于配置文件所在目录）和绝对路径。也可通过环境变量 `REPOSCOUT_PROVIDER_SYSTEM_PROMPT_PATH` 设置。
 
 ## 输出结构
 
@@ -113,7 +121,25 @@ reposcout run request.json --rerank -c config.json
 }
 ```
 
-## 评估
+## 排序算法
+
+文件最终得分分两阶段计算：
+
+**无 LLM 时（纯结构分）：**
+```
+score = DiscoveryScore×0.35 + ModuleWeight×0.15 + HeuristicScore×0.20 + ProfileScore×0.10
+```
+
+**有 LLM 时（混合）：**
+```
+score = structural×0.35 + llm_score×0.65
+```
+
+`DiscoveryScore` 按发现方式区分强弱：import 图（0.7）> 测试配对（0.5）> symbol 命中（0.3）> 同目录/前缀（0.2）> 同模块（0.1）> seed 文件（1.0）。
+
+分类阈值：`main_chain ≥ 0.5`，`companion 0.3–0.5`，`uncertain 0.1–0.3`。
+
+
 
 ```bash
 reposcout eval examples/goldens
@@ -123,7 +149,11 @@ reposcout eval examples/goldens
 
 ## 当前状态
 
-主链路已跑通，支持接入本地 OpenAI-compatible 后端（如 RWKV）。接下来主要继续增强：静态扩展搜索质量，以及候选文件的上下文构建质量。
+主链路已跑通，支持接入本地 OpenAI-compatible 后端（如 RWKV）。近期主要改进：
+
+- 排序算法重设计：引入 `DiscoveryScore` 区分 import 图与随机同目录文件的权重差异，LLM 有结果时以 0.65 权重主导最终排序
+- LLM 上下文质量提升：prompt 中加入结构分摘要、人类可读的发现方式描述、symbol 正则缓存、更健壮的 JSON 解析
+- system prompt 支持外部文件，便于针对不同小模型调整
 
 MCP server 支持在计划中，尚未实现。
 
