@@ -18,6 +18,9 @@ type ProviderConfig struct {
 	Model string `json:"model"`
 	// APIStyle indicates the API format (e.g., "openai", "anthropic").
 	APIStyle string `json:"api_style"`
+	// SystemPromptPath is an optional path to a text file containing the system prompt.
+	// If empty or the file cannot be read, a built-in default prompt is used.
+	SystemPromptPath string `json:"system_prompt_path,omitempty"`
 }
 
 // RuntimeConfig holds runtime behavior configuration.
@@ -110,6 +113,9 @@ func mergeFile(cfg *Config, path string) (bool, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return false, fmt.Errorf("failed to parse config file %s: %w", path, err)
 	}
+	if cfg.Provider.SystemPromptPath != "" && !filepath.IsAbs(cfg.Provider.SystemPromptPath) {
+		cfg.Provider.SystemPromptPath = filepath.Join(filepath.Dir(absPath), cfg.Provider.SystemPromptPath)
+	}
 	return true, nil
 }
 
@@ -149,6 +155,9 @@ func LoadForRepoWithMeta(path, repoRoot string) (*LoadResult, error) {
 	}
 	if v := os.Getenv("REPOSCOUT_PROVIDER_API_STYLE"); v != "" {
 		cfg.Provider.APIStyle = v
+	}
+	if v := os.Getenv("REPOSCOUT_PROVIDER_SYSTEM_PROMPT_PATH"); v != "" {
+		cfg.Provider.SystemPromptPath = v
 	}
 	if v := os.Getenv("REPOSCOUT_RUNTIME_MAX_CONCURRENCY"); v != "" {
 		var n int

@@ -208,7 +208,7 @@ Respond in JSON format:
 {
   "classification": "<one of the options>",
   "confidence": <0.0 to 1.0>,
-  "reason": "<brief explanation>"
+  "reason": "<optional, brief>"
 }`
 
 	case TaskJudgeRelevance:
@@ -219,7 +219,7 @@ Respond in JSON format:
 {
   "relevance": "<one of the options>",
   "confidence": <0.0 to 1.0>,
-  "reason": "<brief explanation>"
+  "reason": "<optional, brief>"
 }`
 
 	case TaskShouldExpand:
@@ -234,7 +234,7 @@ Respond in JSON format:
 {
   "decision": "<one of the options>",
   "confidence": <0.0 to 1.0>,
-  "reason": "<brief explanation>"
+  "reason": "<optional, brief>"
 }`
 
 	case TaskIsImplicitDependency:
@@ -246,7 +246,7 @@ Respond in JSON format:
 {
   "is_implicit": "<one of the options>",
   "confidence": <0.0 to 1.0>,
-  "reason": "<brief explanation>"
+  "reason": "<optional, brief>"
 }`
 
 	default:
@@ -297,14 +297,45 @@ func ParseTaskResult(taskType TaskType, response string) (*TaskResult, error) {
 	return &result, nil
 }
 
-// extractJSON attempts to extract a JSON object from a response string.
+// extractJSON attempts to extract the first complete JSON object from a response string.
+// Uses brace-counting to correctly handle nested objects and trailing content.
 func extractJSON(s string) string {
 	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start == -1 || end == -1 || end < start {
+	if start == -1 {
 		return "{}"
 	}
-	return s[start : end+1]
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		ch := s[i]
+		if inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch ch {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return "{}"
 }
 
 // TaskResult represents the parsed result from an LLM task.

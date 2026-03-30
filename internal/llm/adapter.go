@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/no22/repo-scout/internal/config"
@@ -51,24 +53,33 @@ type AdapterConfig struct {
 
 	// HTTPClient is an optional custom HTTP client.
 	HTTPClient *http.Client
+
+	// SystemPromptPath is an optional path to a text file containing the system prompt.
+	// If empty or unreadable, the built-in default prompt is used.
+	SystemPromptPath string
 }
 
 // AdapterConfigFromConfig creates an AdapterConfig from a Config struct.
 func AdapterConfigFromConfig(cfg *config.Config) *AdapterConfig {
 	return &AdapterConfig{
-		BaseURL:    cfg.Provider.BaseURL,
-		APIKey:     cfg.Provider.APIKey,
-		Model:      cfg.Provider.Model,
-		Timeout:    time.Duration(cfg.Runtime.RequestTimeoutSec) * time.Second,
-		MaxRetries: 3,
+		BaseURL:          cfg.Provider.BaseURL,
+		APIKey:           cfg.Provider.APIKey,
+		Model:            cfg.Provider.Model,
+		Timeout:          time.Duration(cfg.Runtime.RequestTimeoutSec) * time.Second,
+		MaxRetries:       3,
+		SystemPromptPath: cfg.Provider.SystemPromptPath,
 	}
 }
+
+// defaultSystemPrompt is the built-in fallback system prompt.
+const defaultSystemPrompt = "You are a code relevance classifier. Given a file and a task description, classify the file's role in relation to the task.\nRespond only with valid JSON matching the requested format. Do not add any explanation outside the JSON object."
 
 // OpenAICompatibleAdapter implements ProviderAdapter for OpenAI-compatible APIs.
 // This works with any backend that follows the OpenAI chat completions API format.
 type OpenAICompatibleAdapter struct {
-	config     *AdapterConfig
-	httpClient *http.Client
+	config       *AdapterConfig
+	httpClient   *http.Client
+	systemPrompt string
 }
 
 // NewOpenAICompatibleAdapter creates a new OpenAI-compatible adapter.
@@ -87,10 +98,23 @@ func NewOpenAICompatibleAdapter(cfg *AdapterConfig) *OpenAICompatibleAdapter {
 		}
 	}
 
+	systemPrompt := loadSystemPrompt(cfg.SystemPromptPath)
+
 	return &OpenAICompatibleAdapter{
-		config:     cfg,
-		httpClient: httpClient,
+		config:       cfg,
+		httpClient:   httpClient,
+		systemPrompt: systemPrompt,
 	}
+}
+
+// loadSystemPrompt reads the system prompt from path, falling back to the default.
+func loadSystemPrompt(path string) string {
+	if path != "" {
+		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+			return strings.TrimSpace(string(data))
+		}
+	}
+	return defaultSystemPrompt
 }
 
 // chatCompletionRequest represents an OpenAI chat completion request.
@@ -147,6 +171,10 @@ func (a *OpenAICompatibleAdapter) Execute(ctx context.Context, card *TaskCard) (
 	req := &chatCompletionRequest{
 		Model: a.config.Model,
 		Messages: []chatMessage{
+			{
+				Role:    "system",
+				Content: a.systemPrompt,
+			},
 			{
 				Role:    "user",
 				Content: card.ToPrompt(),

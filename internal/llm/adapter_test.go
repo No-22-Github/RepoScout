@@ -1,10 +1,13 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +15,29 @@ import (
 	"github.com/no22/repo-scout/internal/config"
 	"github.com/no22/repo-scout/internal/schema"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func newTestHTTPClient(fn roundTripFunc) *http.Client {
+	return &http.Client{Transport: fn}
+}
+
+func jsonResponse(t *testing.T, status int, body any) *http.Response {
+	t.Helper()
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("failed to marshal response body: %v", err)
+	}
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader(data)),
+	}
+}
 
 func TestAdapterConfigFromConfig(t *testing.T) {
 	cfg := &config.Config{
@@ -125,8 +151,7 @@ func TestOpenAICompatibleAdapterIsAvailable(t *testing.T) {
 }
 
 func TestOpenAICompatibleAdapterExecute(t *testing.T) {
-	// Create a test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
 		// Verify request
 		if r.Method != "POST" {
 			t.Errorf("Method = %s, want POST", r.Method)
@@ -146,9 +171,18 @@ func TestOpenAICompatibleAdapterExecute(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("Failed to decode request: %v", err)
 		}
+		if len(req.Messages) < 2 {
+			t.Fatalf("expected system and user messages, got %d", len(req.Messages))
+		}
+		if req.Messages[0].Role != "system" {
+			t.Fatalf("first message role = %q, want system", req.Messages[0].Role)
+		}
+		if req.Messages[0].Content != "custom system prompt" {
+			t.Fatalf("system prompt = %q, want custom system prompt", req.Messages[0].Content)
+		}
 
 		// Send response
-		resp := chatCompletionResponse{
+		return jsonResponse(t, http.StatusOK, chatCompletionResponse{
 			ID:      "test-id",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -173,19 +207,22 @@ func TestOpenAICompatibleAdapterExecute(t *testing.T) {
 					FinishReason: "stop",
 				},
 			},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		}), nil
+	})
 
 	// Create adapter
+	tmpDir := t.TempDir()
+	systemPromptPath := filepath.Join(tmpDir, "system.txt")
+	if err := os.WriteFile(systemPromptPath, []byte("custom system prompt\n"), 0644); err != nil {
+		t.Fatalf("failed to write system prompt: %v", err)
+	}
 	cfg := &AdapterConfig{
-		BaseURL: server.URL,
-		APIKey:  "test-api-key",
-		Model:   "test-model",
-		Timeout: 10 * time.Second,
+		BaseURL:          "http://example.test",
+		APIKey:           "test-api-key",
+		Model:            "test-model",
+		Timeout:          10 * time.Second,
+		HTTPClient:       httpClient,
+		SystemPromptPath: systemPromptPath,
 	}
 	adapter := NewOpenAICompatibleAdapter(cfg)
 
@@ -214,7 +251,7 @@ func TestOpenAICompatibleAdapterExecute(t *testing.T) {
 
 func TestOpenAICompatibleAdapterExecuteBatch(t *testing.T) {
 	callCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
 		callCount++
 
 		var resp chatCompletionResponse
@@ -261,15 +298,14 @@ func TestOpenAICompatibleAdapterExecuteBatch(t *testing.T) {
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+		return jsonResponse(t, http.StatusOK, resp), nil
+	})
 
 	cfg := &AdapterConfig{
-		BaseURL: server.URL,
-		Model:   "test-model",
-		Timeout: 10 * time.Second,
+		BaseURL:    "http://example.test",
+		Model:      "test-model",
+		Timeout:    10 * time.Second,
+		HTTPClient: httpClient,
 	}
 	adapter := NewOpenAICompatibleAdapter(cfg)
 
@@ -305,8 +341,8 @@ func TestOpenAICompatibleAdapterExecuteError(t *testing.T) {
 	})
 
 	t.Run("API error response", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := chatCompletionResponse{
+		httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusOK, chatCompletionResponse{
 				Error: &struct {
 					Message string `json:"message"`
 					Type    string `json:"type"`
@@ -316,15 +352,13 @@ func TestOpenAICompatibleAdapterExecuteError(t *testing.T) {
 					Type:    "invalid_request_error",
 					Code:    "invalid_api_key",
 				},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
-		}))
-		defer server.Close()
+			}), nil
+		})
 
 		adapter := NewOpenAICompatibleAdapter(&AdapterConfig{
-			BaseURL: server.URL,
-			Model:   "test-model",
+			BaseURL:    "http://example.test",
+			Model:      "test-model",
+			HTTPClient: httpClient,
 		})
 
 		card := NewTaskCard(TaskClassifyFileRole, "test", schema.NewFileCard("test.go"))
@@ -338,15 +372,17 @@ func TestOpenAICompatibleAdapterExecuteError(t *testing.T) {
 	})
 
 	t.Run("HTTP error", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("internal server error"))
-		}))
-		defer server.Close()
+		httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("internal server error")),
+			}, nil
+		})
 
 		adapter := NewOpenAICompatibleAdapter(&AdapterConfig{
-			BaseURL: server.URL,
-			Model:   "test-model",
+			BaseURL:    "http://example.test",
+			Model:      "test-model",
+			HTTPClient: httpClient,
 		})
 
 		card := NewTaskCard(TaskClassifyFileRole, "test", schema.NewFileCard("test.go"))
@@ -357,8 +393,8 @@ func TestOpenAICompatibleAdapterExecuteError(t *testing.T) {
 	})
 
 	t.Run("empty choices", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			resp := chatCompletionResponse{
+		httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusOK, chatCompletionResponse{
 				Choices: []struct {
 					Index   int `json:"index"`
 					Message struct {
@@ -367,15 +403,13 @@ func TestOpenAICompatibleAdapterExecuteError(t *testing.T) {
 					} `json:"message"`
 					FinishReason string `json:"finish_reason"`
 				}{},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
-		}))
-		defer server.Close()
+			}), nil
+		})
 
 		adapter := NewOpenAICompatibleAdapter(&AdapterConfig{
-			BaseURL: server.URL,
-			Model:   "test-model",
+			BaseURL:    "http://example.test",
+			Model:      "test-model",
+			HTTPClient: httpClient,
 		})
 
 		card := NewTaskCard(TaskClassifyFileRole, "test", schema.NewFileCard("test.go"))
@@ -564,17 +598,20 @@ func TestProviderAdapterInterface(t *testing.T) {
 }
 
 func TestOpenAICompatibleAdapterContextCancellation(t *testing.T) {
-	// Create a server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second)
-		w.Write([]byte("{}"))
-	}))
-	defer server.Close()
+	httpClient := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+		select {
+		case <-r.Context().Done():
+			return nil, r.Context().Err()
+		case <-time.After(2 * time.Second):
+			return jsonResponse(t, http.StatusOK, map[string]any{}), nil
+		}
+	})
 
 	cfg := &AdapterConfig{
-		BaseURL: server.URL,
-		Model:   "test-model",
-		Timeout: 10 * time.Second,
+		BaseURL:    "http://example.test",
+		Model:      "test-model",
+		Timeout:    10 * time.Second,
+		HTTPClient: httpClient,
 	}
 	adapter := NewOpenAICompatibleAdapter(cfg)
 

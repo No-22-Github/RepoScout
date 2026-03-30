@@ -131,12 +131,14 @@ func TestLoadForRepo_LayeredPriority(t *testing.T) {
 	}`)
 	writeConfigFile(t, filepath.Join(repoDir, ".reposcout.json"), `{
 		"provider": {
-			"model": "repo-model"
+			"model": "repo-model",
+			"system_prompt_path": "prompts/classify_system.txt"
 		},
 		"runtime": {
 			"max_output_files": 22
 		}
 	}`)
+	writeConfigFile(t, filepath.Join(repoDir, "prompts", "classify_system.txt"), "repo prompt")
 	writeConfigFile(t, explicitPath, `{
 		"provider": {
 			"base_url": "https://explicit.example/v1"
@@ -163,6 +165,9 @@ func TestLoadForRepo_LayeredPriority(t *testing.T) {
 	}
 	if cfg.Provider.Model != "repo-model" {
 		t.Fatalf("expected repo model, got %s", cfg.Provider.Model)
+	}
+	if cfg.Provider.SystemPromptPath != filepath.Join(repoDir, "prompts", "classify_system.txt") {
+		t.Fatalf("expected resolved system_prompt_path, got %s", cfg.Provider.SystemPromptPath)
 	}
 	if cfg.Provider.APIStyle != "env-style" {
 		t.Fatalf("expected env api_style, got %s", cfg.Provider.APIStyle)
@@ -229,11 +234,13 @@ func TestLoadForRepo_UsesRepoRootInsteadOfCWD(t *testing.T) {
 func TestLoadWithEnvOverride(t *testing.T) {
 	os.Setenv("REPOSCOUT_PROVIDER_BASE_URL", "https://env.override/v1")
 	os.Setenv("REPOSCOUT_PROVIDER_API_KEY", "env-key")
+	os.Setenv("REPOSCOUT_PROVIDER_SYSTEM_PROMPT_PATH", "/tmp/system-prompt.txt")
 	os.Setenv("REPOSCOUT_RUNTIME_MAX_CONCURRENCY", "16")
 	os.Setenv("REPOSCOUT_RUNTIME_MAX_INPUT_TOKENS", "2048")
 	defer func() {
 		os.Unsetenv("REPOSCOUT_PROVIDER_BASE_URL")
 		os.Unsetenv("REPOSCOUT_PROVIDER_API_KEY")
+		os.Unsetenv("REPOSCOUT_PROVIDER_SYSTEM_PROMPT_PATH")
 		os.Unsetenv("REPOSCOUT_RUNTIME_MAX_CONCURRENCY")
 		os.Unsetenv("REPOSCOUT_RUNTIME_MAX_INPUT_TOKENS")
 	}()
@@ -248,6 +255,9 @@ func TestLoadWithEnvOverride(t *testing.T) {
 	}
 	if cfg.Provider.APIKey != "env-key" {
 		t.Errorf("expected env-key, got %s", cfg.Provider.APIKey)
+	}
+	if cfg.Provider.SystemPromptPath != "/tmp/system-prompt.txt" {
+		t.Errorf("expected system_prompt_path from env, got %s", cfg.Provider.SystemPromptPath)
 	}
 	if cfg.Runtime.MaxConcurrency != 16 {
 		t.Errorf("expected max_concurrency 16, got %d", cfg.Runtime.MaxConcurrency)

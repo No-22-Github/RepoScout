@@ -319,6 +319,16 @@ func TestExtractJSON(t *testing.T) {
 			expected: `{"a": 1}`,
 		},
 		{
+			name:     "JSON with braces inside string",
+			input:    `prefix {"reason":"contains { brace } text","confidence":0.7} suffix`,
+			expected: `{"reason":"contains { brace } text","confidence":0.7}`,
+		},
+		{
+			name:     "JSON with escaped quote and brace inside string",
+			input:    `prefix {"reason":"quoted \\\"{\\\" token","confidence":0.8} suffix`,
+			expected: `{"reason":"quoted \\\"{\\\" token","confidence":0.8}`,
+		},
+		{
 			name:     "no JSON",
 			input:    "No JSON here",
 			expected: "{}",
